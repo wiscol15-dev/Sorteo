@@ -1,0 +1,160 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+
+enum Role {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum RaffleStatus {
+  ACTIVE
+  FINISHED
+  CANCELLED
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  PURCHASE
+  PRIZE
+  REFUND
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  PENDING_VERIFICATION // <-- AGREGADO: Necesario para el flujo de KYC que manejas
+}
+
+
+
+model User {
+  id              String      @id @default(cuid())
+  email           String      @unique
+  password        String?
+  firstName       String
+  lastName        String
+  phone           String
+  idNumber        String      @unique
+  idDocumentUrl   String?     // Documento cargado por el usuario
+  isVerified      Boolean     @default(false)
+
+  // Trazabilidad de Verificación (KYC)
+  verifiedById    String?       
+  verifiedAt      DateTime?     
+  verifiedBy      User?         @relation("VerifierRelation", fields: [verifiedById], references: [id])
+  verifiedUsers   User[]        @relation("VerifierRelation")
+
+  role            Role        @default(USER)
+  status          UserStatus  @default(ACTIVE)
+  walletBalance   Decimal     @default(0.0) @db.Decimal(20, 2) // Mayor precisión para finanzas
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relaciones
+  tickets         Ticket[]
+  transactions    Transaction[]
+  auditLogs       AuditLog[]    
+
+  @@index([email])
+  @@index([idNumber])
+}
+
+model Raffle {
+  id               String       @id @default(cuid())
+  title            String
+  description      String       @db.Text
+  imageUrl         String?
+  pricePerTicket   Decimal      @db.Decimal(10, 2)
+  maxTickets       Int          @default(1000)
+  minSoldThreshold Float        @default(0.9)
+  winnersCount     Int          @default(1)
+  status           RaffleStatus @default(ACTIVE)
+  drawDate         DateTime
+  winningNumber    Int?
+  winningNumbers   Int[]        
+  
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  // Relaciones
+  tickets          Ticket[]
+
+  @@index([status])
+}
+
+model Ticket {
+  id        String   @id @default(cuid())
+  number    Int
+  price     Decimal  @default(0.0) @db.Decimal(10, 2)
+  isWinner  Boolean  @default(false)
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  raffleId  String
+  raffle    Raffle   @relation(fields: [raffleId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+
+  @@unique([raffleId, number])
+  @@index([userId])
+  @@index([raffleId])
+}
+
+model Transaction {
+  id            String          @id @default(cuid())
+  userId        String
+  user          User            @relation(fields: [userId], references: [id])
+  amount        Decimal         @db.Decimal(20, 2)
+  type          TransactionType
+  status        String          @default("COMPLETED") 
+  referenceId   String?         @unique 
+  paymentMethod String?
+  
+  createdAt     DateTime        @default(now())
+
+  @@index([userId])
+  @@index([type])
+}
+
+model SiteConfig {
+  id              String   @id @default("default_config") 
+  siteName        String   @default("Sorteos Premium")
+  heroText        String   @default("SORTEOS PREMIUM") 
+  colorPrincipal  String   @default("#2563eb")
+  colorSecundario String   @default("#0f172a")
+  cardBgColor     String   @default("#1e293b") 
+  cardTextColor   String   @default("#ffffff") 
+  
+  // Motor Dinámico de Identidad
+  headerIconType  String   @default("ICON") 
+  headerIconName  String   @default("ShieldCheck") 
+  headerImageUrl  String?  
+  
+  updatedAt       DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String   
+  metadata  Json?    
+  ipAddress String?  
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
