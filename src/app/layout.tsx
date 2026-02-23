@@ -1,12 +1,35 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import "./globals.css";
 import Navbar from "@/components/public/Navbar";
 import Footer from "@/components/public/Footer";
 import prisma from "@/lib/prisma";
 
+// OPTIMIZACIÓN SENIOR 1: Memoización de la consulta de configuración.
+// Evita que la base de datos sea golpeada dos veces por cada recarga de página.
+const getSiteConfig = cache(async () => {
+  return await prisma.siteConfig.findFirst();
+});
+
+// OPTIMIZACIÓN SENIOR 2: Memoización del usuario.
+const getUserSession = cache(async (token: string) => {
+  return await prisma.user.findUnique({
+    where: { id: token },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      role: true,
+      walletBalance: true,
+    },
+  });
+});
+
 export async function generateMetadata(): Promise<Metadata> {
-  const config = await prisma.siteConfig.findFirst();
+  const config = await getSiteConfig(); // Usa la caché
+
   return {
     title: config?.siteName || "Sorteos Premium | Plataforma Oficial",
     description:
@@ -23,21 +46,10 @@ export default async function RootLayout({
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get("session_token")?.value;
 
+  // Llama a las funciones cacheadas en paralelo
   const [user, siteConfig] = await Promise.all([
-    sessionToken
-      ? prisma.user.findUnique({
-          where: { id: sessionToken },
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            role: true,
-            walletBalance: true,
-          },
-        })
-      : null,
-    prisma.siteConfig.findFirst(),
+    sessionToken ? getUserSession(sessionToken) : null,
+    getSiteConfig(), // Reutiliza el resultado instantáneamente
   ]);
 
   const serializedUser = user
