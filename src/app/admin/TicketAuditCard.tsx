@@ -11,6 +11,7 @@ import {
   ShieldAlert,
   ChevronDown,
   PackageOpen,
+  FileText,
 } from "lucide-react";
 
 interface AuditedTransaction {
@@ -23,6 +24,8 @@ interface AuditedTransaction {
   adminName: string;
   raffleId: string;
   raffleTitle: string;
+  raffleStatus: string;
+  receiptUrl: string | null;
 }
 
 interface Props {
@@ -33,11 +36,13 @@ interface Props {
 export default function TicketAuditCard({ totalTickets, auditedData }: Props) {
   const [isOpen, setIsOpen] = useState(false);
 
+  // AGRUPAR POR SORTEO
   const groupedData = auditedData.reduce(
     (acc, curr) => {
       if (!acc[curr.raffleId]) {
         acc[curr.raffleId] = {
           title: curr.raffleTitle,
+          status: curr.raffleStatus,
           approved: [],
           rejected: [],
         };
@@ -50,13 +55,19 @@ export default function TicketAuditCard({ totalTickets, auditedData }: Props) {
       string,
       {
         title: string;
+        status: string;
         approved: AuditedTransaction[];
         rejected: AuditedTransaction[];
       }
     >,
   );
 
-  const raffles = Object.values(groupedData);
+  // ORDENAR PRIORIZANDO LOS SORTEOS ACTIVOS
+  const raffles = Object.values(groupedData).sort((a, b) => {
+    if (a.status === "ACTIVE" && b.status !== "ACTIVE") return -1;
+    if (a.status !== "ACTIVE" && b.status === "ACTIVE") return 1;
+    return 0;
+  });
 
   return (
     <>
@@ -122,14 +133,19 @@ export default function TicketAuditCard({ totalTickets, auditedData }: Props) {
                     <details
                       key={index}
                       className="group bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden"
+                      open={index === 0}
                     >
                       <summary className="p-6 cursor-pointer flex items-center justify-between hover:bg-slate-50 transition-colors list-none">
                         <div className="flex items-center gap-4">
-                          <div className="bg-primary-dynamic/10 p-3 rounded-xl text-primary-dynamic">
+                          <div
+                            className={`p-3 rounded-xl ${raffle.status === "ACTIVE" ? "bg-primary-dynamic/10 text-primary-dynamic" : "bg-slate-100 text-slate-400"}`}
+                          >
                             <Ticket size={24} />
                           </div>
                           <div>
-                            <h4 className="text-lg font-black text-slate-900 uppercase italic tracking-tighter">
+                            <h4
+                              className={`text-lg font-black uppercase italic tracking-tighter ${raffle.status === "ACTIVE" ? "text-slate-900" : "text-slate-500"}`}
+                            >
                               {raffle.title}
                             </h4>
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
@@ -164,7 +180,7 @@ export default function TicketAuditCard({ totalTickets, auditedData }: Props) {
                             raffle.approved.map((tx) => (
                               <div
                                 key={tx.id}
-                                className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm"
+                                className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col"
                               >
                                 <div className="flex justify-between items-start mb-2">
                                   <span className="font-black text-slate-800 uppercase text-xs truncate pr-4">
@@ -174,20 +190,33 @@ export default function TicketAuditCard({ totalTickets, auditedData }: Props) {
                                     ${tx.amount.toFixed(2)}
                                   </span>
                                 </div>
-                                <div className="flex items-center justify-between text-[9px] uppercase tracking-widest font-bold text-slate-500 mb-3">
+                                <div className="flex items-center justify-between text-[9px] uppercase tracking-widest font-bold text-slate-500 mb-3 border-b border-slate-50 pb-3">
                                   <span>{tx.ticketCount} Boletos</span>
                                   <span>
                                     {new Date(tx.date).toLocaleDateString()}
                                   </span>
                                 </div>
-                                <div className="bg-slate-50 px-3 py-2 rounded-lg flex items-center gap-2 border border-slate-100">
-                                  <ShieldCheck
-                                    size={12}
-                                    className="text-emerald-500 shrink-0"
-                                  />
-                                  <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest truncate">
-                                    Oficial: {tx.adminName}
-                                  </span>
+                                <div className="flex items-center justify-between mt-auto">
+                                  <div className="bg-slate-50 px-3 py-2 rounded-lg flex items-center gap-2 border border-slate-100 max-w-[65%]">
+                                    <ShieldCheck
+                                      size={12}
+                                      className="text-emerald-500 shrink-0"
+                                    />
+                                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest truncate">
+                                      Oficial: {tx.adminName}
+                                    </span>
+                                  </div>
+
+                                  {tx.receiptUrl && (
+                                    <a
+                                      href={tx.receiptUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest bg-blue-50 text-blue-600 px-3 py-2 rounded-lg hover:bg-blue-100 transition-colors"
+                                    >
+                                      <FileText size={12} /> Ver Recibo
+                                    </a>
+                                  )}
                                 </div>
                               </div>
                             ))
@@ -211,7 +240,7 @@ export default function TicketAuditCard({ totalTickets, auditedData }: Props) {
                             raffle.rejected.map((tx) => (
                               <div
                                 key={tx.id}
-                                className="bg-white p-4 rounded-2xl border border-red-50 shadow-sm"
+                                className="bg-white p-4 rounded-2xl border border-red-50 shadow-sm flex flex-col"
                               >
                                 <div className="flex justify-between items-start mb-2">
                                   <span className="font-black text-slate-800 uppercase text-xs truncate pr-4">
@@ -221,7 +250,7 @@ export default function TicketAuditCard({ totalTickets, auditedData }: Props) {
                                     ${tx.amount.toFixed(2)}
                                   </span>
                                 </div>
-                                <div className="flex items-center justify-between text-[9px] uppercase tracking-widest font-bold text-slate-500 mb-3">
+                                <div className="flex items-center justify-between text-[9px] uppercase tracking-widest font-bold text-slate-500 mb-3 border-b border-red-50 pb-3">
                                   <span className="line-through">
                                     {tx.ticketCount} Boletos anulados
                                   </span>
@@ -229,14 +258,27 @@ export default function TicketAuditCard({ totalTickets, auditedData }: Props) {
                                     {new Date(tx.date).toLocaleDateString()}
                                   </span>
                                 </div>
-                                <div className="bg-red-50/50 px-3 py-2 rounded-lg flex items-center gap-2 border border-red-100">
-                                  <ShieldAlert
-                                    size={12}
-                                    className="text-red-500 shrink-0"
-                                  />
-                                  <span className="text-[8px] font-black text-red-700 uppercase tracking-widest truncate">
-                                    Oficial: {tx.adminName}
-                                  </span>
+                                <div className="flex items-center justify-between mt-auto">
+                                  <div className="bg-red-50/50 px-3 py-2 rounded-lg flex items-center gap-2 border border-red-100 max-w-[65%]">
+                                    <ShieldAlert
+                                      size={12}
+                                      className="text-red-500 shrink-0"
+                                    />
+                                    <span className="text-[8px] font-black text-red-700 uppercase tracking-widest truncate">
+                                      Oficial: {tx.adminName}
+                                    </span>
+                                  </div>
+
+                                  {tx.receiptUrl && (
+                                    <a
+                                      href={tx.receiptUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest bg-blue-50 text-blue-600 px-3 py-2 rounded-lg hover:bg-blue-100 transition-colors"
+                                    >
+                                      <FileText size={12} /> Ver Recibo
+                                    </a>
+                                  )}
                                 </div>
                               </div>
                             ))

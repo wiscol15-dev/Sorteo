@@ -52,29 +52,31 @@ export default async function AdminDashboardPage() {
         price: true,
       },
     }),
+    // OBTENEMOS LAS TRANSACCIONES Y ASEGURAMOS QUE EL SORTEO AÚN EXISTA
     prisma.transaction.findMany({
       where: {
         receiptUrl: { not: null },
         status: { in: ["COMPLETED", "REJECTED"] },
+        tickets: { some: {} }, // Filtra transacciones sin tickets (sorteos eliminados)
       },
       include: {
         user: { select: { firstName: true, lastName: true } },
         tickets: {
+          take: 1, // Solo necesitamos 1 ticket para saber de qué sorteo es
           select: {
-            id: true,
-            raffle: { select: { id: true, title: true } },
+            raffle: { select: { id: true, title: true, status: true } },
           },
         },
+        _count: { select: { tickets: true } }, // Cuenta real de boletos
       },
       orderBy: { createdAt: "desc" },
-      take: 100,
+      take: 150,
     }),
+    // TRAEMOS MÁS LOGS PARA ASEGURAR ENCONTRAR AL ADMIN
     prisma.auditLog.findMany({
-      where: {
-        action: { contains: "PURCHASE" },
-      },
       include: { user: { select: { firstName: true, lastName: true } } },
       orderBy: { createdAt: "desc" },
+      take: 1000,
     }),
   ]);
 
@@ -103,38 +105,42 @@ export default async function AdminDashboardPage() {
 
   const maxRevenue7Days = Math.max(...last7DaysData.map((d) => d.revenue));
 
-  const auditedData = rawManualTransactions.map((tx) => {
-    let adminName = "Sistema Auto-Verificado";
+  // FILTRAMOS Y MAPEAMOS LA DATA AUDITADA
+  const auditedData = rawManualTransactions
+    .filter((tx) => tx.tickets.length > 0 && tx.tickets[0].raffle) // Protección extra contra sorteos borrados
+    .map((tx) => {
+      let adminName = "Sistema Auto-Verificado";
 
-    for (const log of auditLogs) {
-      if (log.metadata) {
-        const metaString =
-          typeof log.metadata === "string"
-            ? log.metadata
-            : JSON.stringify(log.metadata);
-        if (metaString.includes(tx.id)) {
-          adminName = `${log.user.firstName} ${log.user.lastName}`;
-          break;
+      // Búsqueda del admin responsable en los logs
+      for (const log of auditLogs) {
+        if (log.metadata) {
+          const metaString =
+            typeof log.metadata === "string"
+              ? log.metadata
+              : JSON.stringify(log.metadata);
+          if (metaString.includes(tx.id)) {
+            adminName = `${log.user.firstName} ${log.user.lastName}`;
+            break;
+          }
         }
       }
-    }
 
-    const firstTicket = tx.tickets[0];
-    const raffleId = firstTicket?.raffle?.id || "unknown";
-    const raffleTitle = firstTicket?.raffle?.title || "Sorteo General";
+      const raffle = tx.tickets[0].raffle!;
 
-    return {
-      id: tx.id,
-      buyerName: tx.buyerName || `${tx.user.firstName} ${tx.user.lastName}`,
-      amount: Number(tx.amount),
-      status: tx.status,
-      date: tx.createdAt.toISOString(),
-      ticketCount: tx.tickets.length,
-      adminName,
-      raffleId,
-      raffleTitle,
-    };
-  });
+      return {
+        id: tx.id,
+        buyerName: tx.buyerName || `${tx.user.firstName} ${tx.user.lastName}`,
+        amount: Number(tx.amount),
+        status: tx.status,
+        date: tx.createdAt.toISOString(),
+        ticketCount: tx._count.tickets,
+        adminName,
+        raffleId: raffle.id,
+        raffleTitle: raffle.title,
+        raffleStatus: raffle.status, // Para ordenar en el cliente
+        receiptUrl: tx.receiptUrl,
+      };
+    });
 
   return (
     <div className="space-y-8 animate-in fade-in duration-1000">

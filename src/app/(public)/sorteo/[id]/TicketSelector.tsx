@@ -27,7 +27,6 @@ import {
 } from "lucide-react";
 import {
   buyTickets,
-  buyRandomTickets,
   buyRandomTicketsManual,
 } from "@/app/admin/sorteos/actions";
 
@@ -53,6 +52,7 @@ interface Props {
   bankAccounts: Record<string, BankAccount>;
 }
 
+// Límite de botones renderizados a la vez para no congelar el celular (Solo Sorteo Interno)
 const ITEMS_PER_PAGE = 100;
 
 export default function TicketSelector({
@@ -72,27 +72,28 @@ export default function TicketSelector({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isPending, startTransition] = useTransition();
 
-  const [selectedNumbers, setSelectedNumbers] = useState<number[]>([]);
-  const [quantity, setQuantity] = useState<number>(1);
-  const [paymentMethod, setPaymentMethod] = useState<"WALLET" | "MANUAL">(
-    "WALLET",
-  );
-  const [selectedBank, setSelectedBank] = useState<string | null>(null);
-
+  // Estados Generales
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [manualSuccess, setManualSuccess] = useState(false);
 
+  // Estados para Sorteo Interno (Grilla y Wallet)
+  const [selectedNumbers, setSelectedNumbers] = useState<number[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Estados para Sorteo Externo (Cantidad y Pago Manual)
+  const [quantity, setQuantity] = useState<number>(1);
+  const [selectedBank, setSelectedBank] = useState<string | null>(null);
   const [receiptName, setReceiptName] = useState<string>("");
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  const [currentPage, setCurrentPage] = useState(1);
-  const totalPages = Math.ceil(maxTickets / ITEMS_PER_PAGE);
-
+  // Cálculos de Disponibilidad
   const isExternal = type === "EXTERNAL";
   const availableCount = maxTickets - totalSold;
   const isSoldOut = availableCount <= 0;
 
+  // Paginación y Grilla (Se calcula rápido y solo renderiza la página actual)
+  const totalPages = Math.ceil(maxTickets / ITEMS_PER_PAGE);
   const currentViewNumbers = useMemo(() => {
     if (isExternal) return [];
     const startNum = (currentPage - 1) * ITEMS_PER_PAGE + 1;
@@ -103,12 +104,15 @@ export default function TicketSelector({
     );
   }, [maxTickets, currentPage, isExternal]);
 
+  // Costos y Saldos
   const currentSelectionCount = isExternal ? quantity : selectedNumbers.length;
   const totalCost = isSoldOut ? 0 : currentSelectionCount * pricePerTicket;
   const hasBalance = userBalance >= totalCost;
-
   const availableBanksList = Object.keys(bankAccounts || {});
 
+  // ----------------------------------------------------------------------
+  // FUNCIONES PARA SORTEO INTERNO
+  // ----------------------------------------------------------------------
   const toggle = (num: number) => {
     if (soldNumbers.includes(num)) return;
     setError(null);
@@ -136,6 +140,27 @@ export default function TicketSelector({
     }
   };
 
+  const handleInternalBuy = async () => {
+    if (!userId) {
+      router.push("/auth/login");
+      return;
+    }
+
+    startTransition(async () => {
+      const res = await buyTickets(raffleId, userId, selectedNumbers);
+      if (res.success) {
+        setSuccess(true);
+        setSelectedNumbers([]);
+        router.refresh();
+      } else {
+        setError(res.error);
+      }
+    });
+  };
+
+  // ----------------------------------------------------------------------
+  // FUNCIONES PARA SORTEO EXTERNO
+  // ----------------------------------------------------------------------
   const handleQuantityChange = (newQuantity: number) => {
     setError(null);
     if (newQuantity < 1) {
@@ -147,32 +172,7 @@ export default function TicketSelector({
     }
   };
 
-  const handleBuy = async () => {
-    if (!userId) {
-      router.push("/auth/login");
-      return;
-    }
-
-    startTransition(async () => {
-      let res;
-      if (isExternal) {
-        res = await buyRandomTickets(raffleId, userId, quantity);
-      } else {
-        res = await buyTickets(raffleId, userId, selectedNumbers);
-      }
-
-      if (res.success) {
-        setSuccess(true);
-        setSelectedNumbers([]);
-        setQuantity(1);
-        router.refresh();
-      } else {
-        setError(res.error);
-      }
-    });
-  };
-
-  const handleManualSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleExternalSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!userId) {
       router.push("/auth/login");
@@ -190,16 +190,13 @@ export default function TicketSelector({
     const formData = new FormData(form);
     formData.append("raffleId", raffleId);
     formData.append("userId", userId);
-
-    const qtyToSend = isExternal ? quantity : selectedNumbers.length;
-    formData.append("quantity", qtyToSend.toString());
+    formData.append("quantity", quantity.toString());
 
     startTransition(async () => {
       const res = await buyRandomTicketsManual(formData);
       if (res.success) {
         setManualSuccess(true);
         setQuantity(1);
-        setSelectedNumbers([]);
         setReceiptName("");
         setSelectedBank(null);
         router.refresh();
@@ -216,6 +213,9 @@ export default function TicketSelector({
     setTimeout(() => setCopiedField(null), 2000);
   };
 
+  // ----------------------------------------------------------------------
+  // RENDERIZADO DE PANTALLAS DE ÉXITO
+  // ----------------------------------------------------------------------
   if (success)
     return (
       <div className="bg-slate-900/60 backdrop-blur-xl p-12 rounded-[3.5rem] border border-emerald-500/20 shadow-2xl text-center space-y-8 animate-in zoom-in duration-500">
@@ -263,8 +263,12 @@ export default function TicketSelector({
       </div>
     );
 
+  // ----------------------------------------------------------------------
+  // RENDERIZADO PRINCIPAL
+  // ----------------------------------------------------------------------
   return (
     <div className="bg-slate-900/40 backdrop-blur-3xl p-8 md:p-12 rounded-[3.5rem] border border-white/5 shadow-2xl space-y-10 relative overflow-hidden">
+      {/* CABECERA (TÍTULO Y BILLETERA) */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-6">
         <div className="flex items-center gap-4 w-full md:w-auto overflow-hidden">
           <div className="bg-primary-dynamic/20 p-3 rounded-2xl border border-primary-dynamic/30 shrink-0">
@@ -293,17 +297,19 @@ export default function TicketSelector({
           </div>
         </div>
 
-        <div className="bg-black/40 px-6 py-3 rounded-2xl border border-white/5 flex items-center gap-4 shadow-inner shrink-0">
-          <Wallet className="text-slate-500" size={20} />
-          <div className="text-right">
-            <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">
-              Saldo Disponible
-            </p>
-            <p className="text-lg font-black text-white tracking-tighter">
-              ${userBalance.toFixed(2)}
-            </p>
+        {!isExternal && (
+          <div className="bg-black/40 px-6 py-3 rounded-2xl border border-white/5 flex items-center gap-4 shadow-inner shrink-0">
+            <Wallet className="text-slate-500" size={20} />
+            <div className="text-right">
+              <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">
+                Saldo Disponible
+              </p>
+              <p className="text-lg font-black text-white tracking-tighter">
+                ${userBalance.toFixed(2)}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {isSoldOut ? (
@@ -325,133 +331,15 @@ export default function TicketSelector({
         </div>
       ) : (
         <>
-          <div className="flex bg-black/40 p-1.5 rounded-2xl border border-white/5 shadow-inner">
-            <button
-              onClick={() => {
-                setPaymentMethod("WALLET");
-                setError(null);
-              }}
-              className={`flex-1 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${
-                paymentMethod === "WALLET"
-                  ? "bg-primary-dynamic text-white shadow-lg shadow-primary-dynamic/20"
-                  : "text-slate-500 hover:text-white hover:bg-white/5"
-              }`}
+          {isExternal ? (
+            /* ==============================================================
+               MODO EXTERNO: DIRECTO A PAGO MANUAL (SIN GRILLA, SIN WALLET)
+               ============================================================== */
+            <form
+              onSubmit={handleExternalSubmit}
+              className="bg-black/20 p-8 rounded-[2.5rem] border border-white/5 shadow-inner space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500"
             >
-              <Wallet size={16} /> Saldo Wallet
-            </button>
-            <button
-              onClick={() => {
-                setPaymentMethod("MANUAL");
-                setError(null);
-              }}
-              className={`flex-1 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${
-                paymentMethod === "MANUAL"
-                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
-                  : "text-slate-500 hover:text-white hover:bg-white/5"
-              }`}
-            >
-              <Landmark size={16} /> Pago Externo
-            </button>
-          </div>
-
-          {!isExternal ? (
-            <>
-              <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  {selectedNumbers.length > 0 ? (
-                    <span className="text-primary-dynamic">
-                      {selectedNumbers.length} Boletos Seleccionados
-                    </span>
-                  ) : (
-                    <span>Selecciona tus números</span>
-                  )}
-                </p>
-
-                <button
-                  onClick={handleSelectPageAvailable}
-                  disabled={currentViewNumbers.length === 0 || isPending}
-                  className="w-full sm:w-auto group flex items-center justify-center gap-2 bg-white/5 hover:bg-primary-dynamic border border-white/10 hover:border-primary-dynamic px-5 py-2.5 rounded-xl transition-all duration-300 disabled:opacity-30"
-                >
-                  <Zap
-                    size={14}
-                    className="text-primary-dynamic group-hover:text-white transition-colors"
-                  />
-                  <span className="text-[9px] font-black text-white uppercase tracking-widest">
-                    Seleccionar Página Actual
-                  </span>
-                </button>
-              </div>
-
-              <div className="bg-black/20 p-6 rounded-[2.5rem] border border-white/5 shadow-inner">
-                <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-3">
-                  {currentViewNumbers.map((num) => {
-                    const isSold = soldNumbers.includes(num);
-                    const isSelected = selectedNumbers.includes(num);
-
-                    return (
-                      <button
-                        key={num}
-                        disabled={isSold || isPending}
-                        onClick={() => toggle(num)}
-                        className={`
-                          aspect-square rounded-2xl text-xs md:text-sm font-black transition-all duration-300 relative group/btn
-                          ${
-                            isSold
-                              ? "bg-white/5 text-white/10 cursor-not-allowed border border-transparent"
-                              : isSelected
-                                ? "bg-primary-dynamic text-white shadow-[0_0_25px_var(--primary-brand-alpha)] scale-110 border border-white/20 z-10"
-                                : "bg-white/5 text-slate-400 hover:text-white border border-white/5 hover:border-primary-dynamic/50 hover:bg-primary-dynamic/5"
-                          }
-                        `}
-                      >
-                        {num.toString().padStart(2, "0")}
-                        {isSold && (
-                          <XCircle
-                            size={10}
-                            className="absolute top-1 right-1 opacity-20"
-                          />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between mt-8 bg-black/40 p-2 rounded-2xl border border-white/5">
-                    <button
-                      type="button"
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                      className="p-4 bg-white/5 hover:bg-white/10 rounded-xl disabled:opacity-30 transition-all text-white flex items-center justify-center"
-                    >
-                      <ChevronLeft size={18} />
-                    </button>
-                    <div className="text-center">
-                      <span className="block text-xs font-black text-white uppercase tracking-widest">
-                        Página {currentPage} / {totalPages}
-                      </span>
-                      <span className="block text-[8px] font-bold text-slate-500 uppercase tracking-widest mt-1">
-                        Del {(currentPage - 1) * ITEMS_PER_PAGE + 1} al{" "}
-                        {Math.min(currentPage * ITEMS_PER_PAGE, maxTickets)}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setCurrentPage((p) => Math.min(totalPages, p + 1))
-                      }
-                      disabled={currentPage === totalPages}
-                      className="p-4 bg-white/5 hover:bg-white/10 rounded-xl disabled:opacity-30 transition-all text-white flex items-center justify-center"
-                    >
-                      <ChevronRight size={18} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="bg-black/20 p-8 md:p-12 rounded-[2.5rem] border border-white/5 shadow-inner flex flex-col items-center justify-center space-y-8 animate-in fade-in zoom-in-95">
-              <div className="text-center space-y-2">
+              <div className="text-center space-y-2 border-b border-white/5 pb-8 mb-8">
                 <p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">
                   Boletos Disponibles
                 </p>
@@ -461,19 +349,17 @@ export default function TicketSelector({
                     / {maxTickets}
                   </span>
                 </p>
-              </div>
 
-              <div className="flex items-center gap-6 bg-slate-900/50 p-4 rounded-[2rem] border border-white/10 shadow-2xl">
-                <button
-                  type="button"
-                  onClick={() => handleQuantityChange(quantity - 1)}
-                  disabled={quantity <= 1 || isPending}
-                  className="w-14 h-14 rounded-2xl bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  <Minus size={24} />
-                </button>
+                <div className="flex items-center justify-center gap-6 bg-slate-900/50 p-4 rounded-[2rem] border border-white/10 shadow-2xl max-w-xs mx-auto mt-6">
+                  <button
+                    type="button"
+                    onClick={() => handleQuantityChange(quantity - 1)}
+                    disabled={quantity <= 1 || isPending}
+                    className="w-14 h-14 rounded-2xl bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                  >
+                    <Minus size={24} />
+                  </button>
 
-                <div className="w-24 text-center">
                   <input
                     type="number"
                     value={quantity}
@@ -481,88 +367,29 @@ export default function TicketSelector({
                       handleQuantityChange(parseInt(e.target.value) || 1)
                     }
                     disabled={isPending}
-                    className="w-full bg-transparent text-center text-5xl font-black text-white italic tracking-tighter outline-none appearance-none"
+                    className="w-24 bg-transparent text-center text-5xl font-black text-white italic tracking-tighter outline-none appearance-none"
                     min="1"
                     max={availableCount}
                   />
+
+                  <button
+                    type="button"
+                    onClick={() => handleQuantityChange(quantity + 1)}
+                    disabled={quantity >= availableCount || isPending}
+                    className="w-14 h-14 rounded-2xl bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                  >
+                    <Plus size={24} />
+                  </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleQuantityChange(quantity + 1)}
-                  disabled={quantity >= availableCount || isPending}
-                  className="w-14 h-14 rounded-2xl bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  <Plus size={24} />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 animate-in fade-in">
-              <AlertCircle size={18} />
-              {error}
-            </div>
-          )}
-
-          <div className="text-center space-y-1">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">
-              Monto Total
-            </p>
-            <p
-              className={`text-6xl md:text-7xl font-black italic tracking-tighter transition-all duration-500 ${
-                paymentMethod === "WALLET" &&
-                !hasBalance &&
-                currentSelectionCount > 0
-                  ? "text-red-500 drop-shadow-[0_0_15px_rgba(239,68,68,0.3)]"
-                  : "text-white"
-              }`}
-            >
-              ${totalCost.toFixed(2)}
-            </p>
-          </div>
-
-          {paymentMethod === "WALLET" ? (
-            <div className="space-y-4">
-              <button
-                onClick={handleBuy}
-                disabled={
-                  currentSelectionCount === 0 ||
-                  isPending ||
-                  (!hasBalance && !!userId)
-                }
-                className="w-full relative group overflow-hidden bg-primary-dynamic text-white p-7 rounded-[2.5rem] font-black uppercase text-sm tracking-[0.4em] shadow-2xl transition-all hover:brightness-110 disabled:grayscale disabled:opacity-20 disabled:cursor-not-allowed"
-              >
-                <div className="relative z-10 flex items-center justify-center gap-4">
-                  {isPending ? (
-                    <Loader2 className="animate-spin" size={24} />
-                  ) : !hasBalance && !!userId ? (
-                    <>FONDOS INSUFICIENTES</>
-                  ) : (
-                    <>
-                      {isExternal ? (
-                        <Shuffle size={20} />
-                      ) : (
-                        <MousePointer2 size={20} />
-                      )}
-                      CONFIRMAR ADQUISICIÓN ({currentSelectionCount})
-                    </>
-                  )}
-                </div>
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-              </button>
-              {!userId && (
-                <p className="text-[9px] text-center font-black text-primary-dynamic uppercase tracking-widest animate-pulse">
-                  * Se requiere autenticación para procesar la orden
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mt-8">
+                  Monto Total a Transferir
                 </p>
-              )}
-            </div>
-          ) : (
-            <form
-              onSubmit={handleManualSubmit}
-              className="bg-black/20 p-8 rounded-[2.5rem] border border-white/5 shadow-inner space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500"
-            >
+                <p className="text-6xl md:text-7xl font-black italic tracking-tighter text-white">
+                  ${totalCost.toFixed(2)}
+                </p>
+              </div>
+
               <div className="space-y-4">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 border-b border-white/5 pb-3">
                   <Building2 size={14} className="text-indigo-400" />
@@ -776,6 +603,13 @@ export default function TicketSelector({
                 </div>
               </div>
 
+              {error && (
+                <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 animate-in fade-in">
+                  <AlertCircle size={18} />
+                  {error}
+                </div>
+              )}
+
               <button
                 type="submit"
                 disabled={
@@ -804,6 +638,157 @@ export default function TicketSelector({
                 </p>
               )}
             </form>
+          ) : (
+            /* ==============================================================
+               MODO INTERNO: GRILLA DE NÚMEROS Y PAGO CON WALLET
+               ============================================================== */
+            <>
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  {selectedNumbers.length > 0 ? (
+                    <span className="text-primary-dynamic">
+                      {selectedNumbers.length} Boletos Seleccionados
+                    </span>
+                  ) : (
+                    <span>Selecciona tus números</span>
+                  )}
+                </p>
+
+                <button
+                  onClick={handleSelectPageAvailable}
+                  disabled={currentViewNumbers.length === 0 || isPending}
+                  className="w-full sm:w-auto group flex items-center justify-center gap-2 bg-white/5 hover:bg-primary-dynamic border border-white/10 hover:border-primary-dynamic px-5 py-2.5 rounded-xl transition-all duration-300 disabled:opacity-30"
+                >
+                  <Zap
+                    size={14}
+                    className="text-primary-dynamic group-hover:text-white transition-colors"
+                  />
+                  <span className="text-[9px] font-black text-white uppercase tracking-widest">
+                    Seleccionar Página Actual
+                  </span>
+                </button>
+              </div>
+
+              <div className="bg-black/20 p-6 rounded-[2.5rem] border border-white/5 shadow-inner">
+                <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-3">
+                  {currentViewNumbers.map((num) => {
+                    const isSold = soldNumbers.includes(num);
+                    const isSelected = selectedNumbers.includes(num);
+
+                    return (
+                      <button
+                        key={num}
+                        disabled={isSold || isPending}
+                        onClick={() => toggle(num)}
+                        className={`
+                          aspect-square rounded-2xl text-xs md:text-sm font-black transition-all duration-300 relative group/btn
+                          ${
+                            isSold
+                              ? "bg-white/5 text-white/10 cursor-not-allowed border border-transparent"
+                              : isSelected
+                                ? "bg-primary-dynamic text-white shadow-[0_0_25px_var(--primary-brand-alpha)] scale-110 border border-white/20 z-10"
+                                : "bg-white/5 text-slate-400 hover:text-white border border-white/5 hover:border-primary-dynamic/50 hover:bg-primary-dynamic/5"
+                          }
+                        `}
+                      >
+                        {num.toString().padStart(2, "0")}
+                        {isSold && (
+                          <XCircle
+                            size={10}
+                            className="absolute top-1 right-1 opacity-20"
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-8 bg-black/40 p-2 rounded-2xl border border-white/5">
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="p-4 bg-white/5 hover:bg-white/10 rounded-xl disabled:opacity-30 transition-all text-white flex items-center justify-center"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+                    <div className="text-center">
+                      <span className="block text-xs font-black text-white uppercase tracking-widest">
+                        Página {currentPage} / {totalPages}
+                      </span>
+                      <span className="block text-[8px] font-bold text-slate-500 uppercase tracking-widest mt-1">
+                        Del {(currentPage - 1) * ITEMS_PER_PAGE + 1} al{" "}
+                        {Math.min(currentPage * ITEMS_PER_PAGE, maxTickets)}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCurrentPage((p) => Math.min(totalPages, p + 1))
+                      }
+                      disabled={currentPage === totalPages}
+                      className="p-4 bg-white/5 hover:bg-white/10 rounded-xl disabled:opacity-30 transition-all text-white flex items-center justify-center"
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {error && (
+                <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 animate-in fade-in">
+                  <AlertCircle size={18} />
+                  {error}
+                </div>
+              )}
+
+              <div className="text-center space-y-1 mt-8">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">
+                  Monto Total a Debitar
+                </p>
+                <p
+                  className={`text-6xl md:text-7xl font-black italic tracking-tighter transition-all duration-500 ${
+                    !hasBalance && currentSelectionCount > 0
+                      ? "text-red-500 drop-shadow-[0_0_15px_rgba(239,68,68,0.3)]"
+                      : "text-white"
+                  }`}
+                >
+                  ${totalCost.toFixed(2)}
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <button
+                  onClick={handleInternalBuy}
+                  disabled={
+                    currentSelectionCount === 0 ||
+                    isPending ||
+                    (!hasBalance && !!userId)
+                  }
+                  className="w-full relative group overflow-hidden bg-primary-dynamic text-white p-7 rounded-[2.5rem] font-black uppercase text-sm tracking-[0.4em] shadow-2xl transition-all hover:brightness-110 disabled:grayscale disabled:opacity-20 disabled:cursor-not-allowed"
+                >
+                  <div className="relative z-10 flex items-center justify-center gap-4">
+                    {isPending ? (
+                      <Loader2 className="animate-spin" size={24} />
+                    ) : !hasBalance && !!userId ? (
+                      <>FONDOS INSUFICIENTES</>
+                    ) : (
+                      <>
+                        <MousePointer2 size={20} />
+                        CONFIRMAR ADQUISICIÓN ({currentSelectionCount})
+                      </>
+                    )}
+                  </div>
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                </button>
+                {!userId && (
+                  <p className="text-[9px] text-center font-black text-primary-dynamic uppercase tracking-widest animate-pulse">
+                    * Se requiere autenticación para procesar la orden
+                  </p>
+                )}
+              </div>
+            </>
           )}
         </>
       )}
