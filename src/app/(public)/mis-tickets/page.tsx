@@ -1,13 +1,8 @@
 import prisma from "@/lib/prisma";
-
 import { cookies } from "next/headers";
-
 import { redirect } from "next/navigation";
-
 import Image from "next/image";
-
 import Link from "next/link";
-
 import {
   Ticket,
   Trophy,
@@ -15,11 +10,12 @@ import {
   Sparkles,
   Medal,
   ChevronRight,
+  AlertCircle,
+  Clock,
 } from "lucide-react";
 
 export const metadata = {
   title: "Mis Boletos | Sorteos Premium",
-
   description: "Historial de participaciones y boletos ganadores.",
 };
 
@@ -27,7 +23,6 @@ export const dynamic = "force-dynamic";
 
 export default async function MisBoletosPage() {
   const cookieStore = await cookies();
-
   const sessionToken = cookieStore.get("session_token")?.value;
 
   if (!sessionToken) {
@@ -36,11 +31,9 @@ export default async function MisBoletosPage() {
 
   const userWithTickets = await prisma.user.findUnique({
     where: { id: sessionToken },
-
     include: {
       tickets: {
         include: { raffle: true },
-
         orderBy: [{ isWinner: "desc" }, { number: "asc" }],
       },
     },
@@ -50,35 +43,34 @@ export default async function MisBoletosPage() {
     redirect("/auth/login");
   }
 
+  // Agrupación y separación por ESTADOS del ticket
   const groupedTickets = userWithTickets.tickets.reduce(
     (acc, ticket) => {
       if (!acc[ticket.raffleId]) {
         acc[ticket.raffleId] = {
           raffle: ticket.raffle,
-
-          tickets: [],
-
+          tickets: [], // Solo contendrá VALID y PENDING
+          rejectedCount: 0,
           hasWinner: false,
         };
       }
 
-      acc[ticket.raffleId].tickets.push(ticket);
-
-      if (ticket.isWinner) acc[ticket.raffleId].hasWinner = true;
+      if (ticket.status === "REJECTED") {
+        acc[ticket.raffleId].rejectedCount += 1;
+      } else {
+        acc[ticket.raffleId].tickets.push(ticket);
+        if (ticket.isWinner) acc[ticket.raffleId].hasWinner = true;
+      }
 
       return acc;
     },
-
     {} as Record<string, any>,
   );
 
   const sortedGroups = Object.values(groupedTickets).sort((a, b) => {
     if (a.hasWinner && !b.hasWinner) return -1;
-
     if (!a.hasWinner && b.hasWinner) return 1;
-
     if (a.raffle.status === "ACTIVE" && b.raffle.status !== "ACTIVE") return -1;
-
     if (a.raffle.status !== "ACTIVE" && b.raffle.status === "ACTIVE") return 1;
 
     return (
@@ -91,7 +83,6 @@ export default async function MisBoletosPage() {
     <main className="min-h-screen bg-[#f8fafc] pt-32 pb-24 relative overflow-hidden">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-screen-2xl h-full pointer-events-none">
         <div className="absolute top-[-10%] right-[-5%] w-[40rem] h-[40rem] bg-primary/5 rounded-full blur-[100px] mix-blend-multiply" />
-
         <div className="absolute bottom-[-10%] left-[-5%] w-[40rem] h-[40rem] bg-yellow-400/5 rounded-full blur-[100px] mix-blend-multiply" />
       </div>
 
@@ -132,8 +123,7 @@ export default async function MisBoletosPage() {
         ) : (
           <div className="space-y-8">
             {sortedGroups.map((group, index) => {
-              const { raffle, tickets, hasWinner } = group;
-
+              const { raffle, tickets, hasWinner, rejectedCount } = group;
               const isActive = raffle.status === "ACTIVE";
 
               return (
@@ -207,16 +197,11 @@ export default async function MisBoletosPage() {
                           <span>
                             {new Date(raffle.drawDate).toLocaleDateString(
                               "es-ES",
-
                               {
                                 day: "2-digit",
-
                                 month: "long",
-
                                 year: "numeric",
-
                                 hour: "2-digit",
-
                                 minute: "2-digit",
                               },
                             )}
@@ -233,6 +218,20 @@ export default async function MisBoletosPage() {
                       </Link>
                     </div>
 
+                    {/* ALERTA DE RECHAZO (Si el admin canceló boletos de este sorteo) */}
+                    {rejectedCount > 0 && (
+                      <div className="bg-red-50 text-red-600 border border-red-100 p-5 rounded-2xl flex items-start gap-4 mb-8 text-xs font-black uppercase tracking-widest shadow-sm">
+                        <AlertCircle size={20} className="shrink-0 mt-0.5" />
+                        <p className="leading-relaxed">
+                          ATENCIÓN: Su pago ha sido cancelado por falta de
+                          autenticación o comprobante inválido.{" "}
+                          <span className="opacity-70">
+                            ({rejectedCount} tickets anulados)
+                          </span>
+                        </p>
+                      </div>
+                    )}
+
                     <div className="space-y-4">
                       <p
                         className={`text-[10px] font-black uppercase tracking-[0.2em] ${hasWinner ? "text-yellow-600" : "text-slate-400"}`}
@@ -242,11 +241,11 @@ export default async function MisBoletosPage() {
 
                       <div className="flex flex-wrap gap-3">
                         {tickets.map((ticket: any) => {
+                          // Boleto Ganador
                           if (ticket.isWinner) {
                             return (
                               <div key={ticket.id} className="relative group">
                                 <div className="absolute inset-0 bg-yellow-400 rounded-2xl blur-md opacity-50 group-hover:opacity-100 transition-opacity animate-pulse" />
-
                                 <div className="relative bg-gradient-to-br from-yellow-300 via-yellow-400 to-yellow-600 text-slate-900 px-6 py-3 rounded-2xl font-black text-xl md:text-2xl shadow-lg border border-yellow-200 flex items-center gap-2 transform transition-transform hover:scale-110">
                                   <Medal
                                     size={20}
@@ -258,6 +257,21 @@ export default async function MisBoletosPage() {
                             );
                           }
 
+                          // Boleto Pendiente de Aprobación por el Admin
+                          if (ticket.status === "PENDING") {
+                            return (
+                              <div
+                                key={ticket.id}
+                                title="Esperando validación de pago"
+                                className="bg-indigo-50 text-indigo-400 px-5 py-3 rounded-2xl font-black text-lg md:text-xl border border-indigo-100 flex items-center gap-2 transition-transform hover:-translate-y-1"
+                              >
+                                <Clock size={16} className="animate-pulse" />#
+                                {ticket.number.toString().padStart(4, "0")}
+                              </div>
+                            );
+                          }
+
+                          // Boleto Activo (Aprobado / Normal)
                           if (isActive) {
                             return (
                               <div
@@ -269,6 +283,7 @@ export default async function MisBoletosPage() {
                             );
                           }
 
+                          // Boleto de sorteo ya finalizado
                           return (
                             <div
                               key={ticket.id}
@@ -278,6 +293,15 @@ export default async function MisBoletosPage() {
                             </div>
                           );
                         })}
+
+                        {/* Si el usuario solo tiene boletos rechazados y 0 pendientes/activos */}
+                        {tickets.length === 0 && rejectedCount > 0 && (
+                          <div className="w-full text-center py-6 bg-slate-50 border border-dashed border-slate-200 rounded-2xl">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                              No posees boletos válidos para este evento.
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

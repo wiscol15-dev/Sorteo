@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import Image from "next/image";
 import TicketSelector from "./TicketSelector";
-import { Trophy, Star, Crown, ShieldCheck } from "lucide-react";
+import { Trophy, Crown, ShieldCheck } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -14,16 +14,26 @@ interface Props {
 export default async function SorteoDetallePage({ params }: Props) {
   const { id } = await params;
 
-  const raffle = await prisma.raffle.findUnique({
-    where: { id },
-    include: {
-      tickets: {
-        include: { user: { select: { firstName: true, lastName: true } } },
+  const [raffle, config] = await Promise.all([
+    prisma.raffle.findUnique({
+      where: { id },
+      include: {
+        tickets: {
+          include: { user: { select: { firstName: true, lastName: true } } },
+        },
       },
-    },
-  });
+    }),
+    prisma.siteConfig.findFirst(),
+  ]);
 
   if (!raffle) return notFound();
+
+  let bankAccounts = {};
+  try {
+    bankAccounts = JSON.parse(config?.bankAccounts || "{}");
+  } catch (e) {
+    bankAccounts = {};
+  }
 
   const isFinished = raffle.status === "FINISHED";
   const winnerTicket = raffle.tickets.find((t) => t.isWinner);
@@ -87,7 +97,6 @@ export default async function SorteoDetallePage({ params }: Props) {
           <div className="lg:col-span-7 animate-in slide-in-from-right-8 duration-1000">
             {isFinished ? (
               <div className="bg-slate-900/40 backdrop-blur-3xl p-10 md:p-16 rounded-[4rem] border border-amber-500/20 shadow-[0_0_50px_rgba(245,158,11,0.1)] text-center space-y-10 relative overflow-hidden">
-                {/* Decoración Heroica */}
                 <div className="absolute -top-10 -right-10 opacity-10 text-amber-500 rotate-12">
                   <Trophy size={200} />
                 </div>
@@ -143,17 +152,23 @@ export default async function SorteoDetallePage({ params }: Props) {
                     <span className="text-primary-dynamic">Participación</span>
                   </h1>
                   <p className="text-slate-400 text-xs font-medium uppercase tracking-wider opacity-60">
-                    Sorteo en curso. Selecciona tus tickets disponibles.
+                    {raffle.type === "EXTERNAL"
+                      ? "Sorteo con Super Gana"
+                      : "Sorteo en curso. Selecciona tus números de la suerte en la grilla."}
                   </p>
                 </div>
 
                 <TicketSelector
                   raffleId={raffle.id}
+                  raffleTitle={raffle.title}
+                  raffleDescription={raffle.description}
+                  type={raffle.type}
                   maxTickets={raffle.maxTickets}
                   pricePerTicket={Number(raffle.pricePerTicket)}
                   soldNumbers={soldNumbers}
                   userId={currentUserId}
                   userBalance={currentUserBalance}
+                  bankAccounts={bankAccounts}
                 />
               </div>
             )}

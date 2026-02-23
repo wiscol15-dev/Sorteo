@@ -52,9 +52,33 @@ export async function updateSystemConfig(formData: FormData, userId: string) {
       }
     }
 
+    // CAPTURA DINÁMICA DE CUENTAS BANCARIAS
+    const bankAccountsObj: Record<string, any> = {};
+    const totalBanks =
+      parseInt(formData.get("total_banks_count") as string) || 50;
+
+    for (let i = 0; i < totalBanks; i++) {
+      const bankName = formData.get(`bank_${i}_name`) as string;
+      if (bankName) {
+        const titular =
+          (formData.get(`bank_${i}_titular`) as string)?.trim() || "";
+        const doc = (formData.get(`bank_${i}_doc`) as string)?.trim() || "";
+        const account =
+          (formData.get(`bank_${i}_account`) as string)?.trim() || "";
+        const phone = (formData.get(`bank_${i}_phone`) as string)?.trim() || "";
+        const type = (formData.get(`bank_${i}_type`) as string)?.trim() || "";
+
+        if (titular || doc || account || phone || type) {
+          bankAccountsObj[bankName] = { titular, doc, account, phone, type };
+        }
+      }
+    }
+
+    const bankAccounts = JSON.stringify(bankAccountsObj);
+
     const currentConfig = await prisma.siteConfig.findFirst();
 
-    const configData = {
+    const configData: any = {
       siteName,
       heroText,
       colorPrincipal,
@@ -63,6 +87,7 @@ export async function updateSystemConfig(formData: FormData, userId: string) {
       cardTextColor,
       headerIconType,
       headerIconName,
+      bankAccounts,
       ...(finalHeaderImageUrl && { headerImageUrl: finalHeaderImageUrl }),
     };
 
@@ -87,6 +112,7 @@ export async function updateSystemConfig(formData: FormData, userId: string) {
             siteName,
             headerIconType,
             headerIconName,
+            banksUpdated: Object.keys(bankAccountsObj).length,
           },
         },
       });
@@ -94,9 +120,9 @@ export async function updateSystemConfig(formData: FormData, userId: string) {
 
     revalidatePath("/", "layout");
     revalidatePath("/admin/configuracion");
+    revalidatePath("/sorteo/[id]", "page");
     return { success: true };
   } catch (error: any) {
-    console.error("Falló la actualización de ADN:", error.message);
     return { success: false, error: error.message };
   }
 }
@@ -212,7 +238,6 @@ export async function deleteUserAccount(targetId: string) {
     revalidatePath("/admin/configuracion");
     return { success: true };
   } catch (error: any) {
-    console.error("Error crítico al eliminar oficial:", error.message);
     return { success: false, error: error.message };
   }
 }

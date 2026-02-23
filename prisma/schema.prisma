@@ -4,11 +4,9 @@ datasource db {
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "rhel-openssl-1.0.x"]
 }
-
-
 
 enum Role {
   USER
@@ -20,6 +18,11 @@ enum RaffleStatus {
   ACTIVE
   FINISHED
   CANCELLED
+}
+
+enum RaffleType {
+  INTERNAL
+  EXTERNAL
 }
 
 enum TransactionType {
@@ -34,41 +37,39 @@ enum UserStatus {
   ACTIVE
   SUSPENDED
   BANNED
-  PENDING_VERIFICATION // <-- AGREGADO: Necesario para el flujo de KYC que manejas
+  PENDING_VERIFICATION
 }
 
-
+enum TicketStatus {
+  VALID
+  PENDING
+  REJECTED
+}
 
 model User {
-  id              String      @id @default(cuid())
+  id              String        @id @default(cuid())
   name            String?
-  email           String      @unique
+  email           String        @unique
   password        String?
   firstName       String
   lastName        String
   phone           String
-  idNumber        String      @unique
+  idNumber        String        @unique
   idCardUrl       String?
-  idDocumentUrl   String?     // Documento cargado por el usuario
-  isVerified      Boolean     @default(false)
-
-  // Trazabilidad de Verificación (KYC)
-  verifiedById    String?       
-  verifiedAt      DateTime?     
+  idDocumentUrl   String?
+  isVerified      Boolean       @default(false)
+  verifiedById    String?
+  verifiedAt      DateTime?
   verifiedBy      User?         @relation("VerifierRelation", fields: [verifiedById], references: [id])
   verifiedUsers   User[]        @relation("VerifierRelation")
-
-  role            Role        @default(USER)
-  status          UserStatus  @default(ACTIVE)
-  walletBalance   Decimal     @default(0.0) @db.Decimal(20, 2) // Mayor precisión para finanzas
-  
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-
-  // Relaciones
+  role            Role          @default(USER)
+  status          UserStatus    @default(ACTIVE)
+  walletBalance   Decimal       @default(0.0) @db.Decimal(20, 2)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
   tickets         Ticket[]
   transactions    Transaction[]
-  auditLogs       AuditLog[]    
+  auditLogs       AuditLog[]
 
   @@index([email])
   @@index([idNumber])
@@ -84,32 +85,32 @@ model Raffle {
   minSoldThreshold Float        @default(0.9)
   winnersCount     Int          @default(1)
   status           RaffleStatus @default(ACTIVE)
+  type             RaffleType   @default(INTERNAL)
   drawDate         DateTime
   winningNumber    Int?
-  winningNumbers   Int[]        
-  
+  winningNumbers   Int[]
+  isFinished       Boolean      @default(false)
+  availableBanks   String?      @db.Text
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
-
-  // Relaciones
   tickets          Ticket[]
 
   @@index([status])
 }
 
 model Ticket {
-  id        String   @id @default(cuid())
-  number    Int
-  price     Decimal  @default(0.0) @db.Decimal(10, 2)
-  isWinner  Boolean  @default(false)
-  
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  raffleId  String
-  raffle    Raffle   @relation(fields: [raffleId], references: [id], onDelete: Cascade)
-  
-  createdAt DateTime @default(now())
+  id            String       @id @default(cuid())
+  number        Int
+  price         Decimal      @default(0.0) @db.Decimal(10, 2)
+  isWinner      Boolean      @default(false)
+  status        TicketStatus @default(VALID)
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  raffleId      String
+  raffle        Raffle       @relation(fields: [raffleId], references: [id], onDelete: Cascade)
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
+  createdAt     DateTime     @default(now())
 
   @@unique([raffleId, number])
   @@index([userId])
@@ -122,30 +123,32 @@ model Transaction {
   user          User            @relation(fields: [userId], references: [id])
   amount        Decimal         @db.Decimal(20, 2)
   type          TransactionType
-  status        String          @default("COMPLETED") 
-  referenceId   String?         @unique 
+  status        String          @default("COMPLETED")
+  referenceId   String?         @unique
   paymentMethod String?
-  
+  receiptUrl    String?
+  buyerName     String?
+  buyerDocument String?
+  buyerEmail    String?
   createdAt     DateTime        @default(now())
+  tickets       Ticket[]
 
   @@index([userId])
   @@index([type])
 }
 
 model SiteConfig {
-  id              String   @id @default("default_config") 
+  id              String   @id @default("default_config")
   siteName        String   @default("Sorteos Premium")
-  heroText        String   @default("SORTEOS PREMIUM") 
+  heroText        String   @default("SORTEOS PREMIUM")
   colorPrincipal  String   @default("#2563eb")
   colorSecundario String   @default("#0f172a")
-  cardBgColor     String   @default("#1e293b") 
-  cardTextColor   String   @default("#ffffff") 
-  
-  // Motor Dinámico de Identidad
-  headerIconType  String   @default("ICON") 
-  headerIconName  String   @default("ShieldCheck") 
-  headerImageUrl  String?  
-  
+  cardBgColor     String   @default("#1e293b")
+  cardTextColor   String   @default("#ffffff")
+  headerIconType  String   @default("ICON")
+  headerIconName  String   @default("ShieldCheck")
+  headerImageUrl  String?
+  bankAccounts    String?  @db.Text
   updatedAt       DateTime @updatedAt
 }
 
@@ -153,9 +156,9 @@ model AuditLog {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id])
-  action    String   
-  metadata  Json?    
-  ipAddress String?  
+  action    String
+  metadata  Json?
+  ipAddress String?
   createdAt DateTime @default(now())
 
   @@index([userId])

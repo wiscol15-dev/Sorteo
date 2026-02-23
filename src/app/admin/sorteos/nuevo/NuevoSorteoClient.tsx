@@ -1,0 +1,461 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  Ticket,
+  Image as ImageIcon,
+  Calendar,
+  DollarSign,
+  Hash,
+  Target,
+  ArrowLeft,
+  Save,
+  Loader2,
+  AlertCircle,
+  UploadCloud,
+  Link as LinkIcon,
+  Users,
+  Settings2,
+  Landmark,
+  CheckCircle2,
+} from "lucide-react";
+import { createRaffle } from "../actions";
+
+interface Props {
+  configuredBanks: string[];
+}
+
+export default function NuevoSorteoClient({ configuredBanks }: Props) {
+  const router = useRouter();
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [imageMode, setImageMode] = useState<"url" | "file">("file");
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [sorteoType, setSorteoType] = useState<"INTERNAL" | "EXTERNAL">(
+    "INTERNAL",
+  );
+  const [selectedBanks, setSelectedBanks] = useState<string[]>([]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImagePreview(URL.createObjectURL(file));
+    } else {
+      setImagePreview(null);
+    }
+  };
+
+  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setImagePreview(e.target.value);
+  };
+
+  const toggleBank = (bank: string) => {
+    setError(null);
+    setSelectedBanks((prev) =>
+      prev.includes(bank) ? prev.filter((b) => b !== bank) : [...prev, bank],
+    );
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+
+    if (sorteoType === "EXTERNAL" && selectedBanks.length === 0) {
+      setError(
+        "Debes autorizar al menos un banco para procesar pagos externos.",
+      );
+      setIsLoading(false);
+      return;
+    }
+
+    const formData = new FormData(e.currentTarget);
+
+    if (sorteoType === "EXTERNAL") {
+      formData.append("availableBanks", JSON.stringify(selectedBanks));
+    }
+
+    try {
+      const response = await createRaffle(formData);
+
+      if (response && !response.success) {
+        setError(
+          response.error || "Ocurrió un error inesperado al crear el sorteo.",
+        );
+        setIsLoading(false);
+      }
+    } catch (err) {
+      setError(
+        "Fallo de conexión con el servidor. Por favor, intenta de nuevo.",
+      );
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-8 pb-10 animate-in fade-in slide-in-from-bottom-5 duration-700">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div>
+          <Link
+            href="/admin/sorteos"
+            className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-primary transition-colors mb-4"
+          >
+            <ArrowLeft size={14} /> Volver a Sorteos
+          </Link>
+          <h2 className="text-4xl font-black text-slate-900 uppercase italic tracking-tighter">
+            Crear <span className="text-primary">Sorteo</span>
+          </h2>
+          <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] mt-2 italic">
+            Configuración de nuevo evento premium
+          </p>
+        </div>
+      </header>
+
+      {error && (
+        <div className="bg-red-50 text-red-600 p-5 rounded-3xl flex items-center gap-3 text-xs font-black uppercase tracking-widest border border-red-100 shadow-sm animate-in zoom-in-95">
+          <AlertCircle size={20} className="shrink-0" />
+          <p>{error}</p>
+        </div>
+      )}
+
+      <form
+        onSubmit={handleSubmit}
+        className="grid grid-cols-1 lg:grid-cols-3 gap-8"
+      >
+        <div className="lg:col-span-2 space-y-8">
+          <div className="bg-white p-10 rounded-[3rem] shadow-[0_40px_80px_-20px_rgba(0,0,0,0.05)] border border-slate-100 space-y-6">
+            <h3 className="text-xl font-black uppercase italic tracking-widest text-slate-900 border-b border-slate-50 pb-4">
+              Información General
+            </h3>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2">
+                Título del Sorteo
+              </label>
+              <div className="relative">
+                <Ticket
+                  className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300"
+                  size={18}
+                />
+                <input
+                  name="title"
+                  type="text"
+                  required
+                  disabled={isLoading}
+                  placeholder="Ej: Camioneta Toyota Hilux 2026 + Bono"
+                  className="w-full bg-slate-50 border-2 border-transparent focus:border-primary/20 focus:bg-white p-5 pl-14 rounded-3xl outline-none transition-all font-bold text-slate-900 disabled:opacity-50"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2">
+                Descripción Completa
+              </label>
+              <textarea
+                name="description"
+                required
+                rows={4}
+                disabled={isLoading}
+                placeholder="Describe los detalles del premio..."
+                className="w-full bg-slate-50 border-2 border-transparent focus:border-primary/20 focus:bg-white p-5 rounded-3xl outline-none transition-all font-bold text-slate-900 resize-none disabled:opacity-50"
+              />
+            </div>
+          </div>
+
+          <div className="bg-white p-10 rounded-[3rem] shadow-[0_40px_80px_-20px_rgba(0,0,0,0.05)] border border-slate-100 space-y-6">
+            <h3 className="text-xl font-black uppercase italic tracking-widest text-slate-900 border-b border-slate-50 pb-4">
+              Contenido Visual
+            </h3>
+
+            <div className="flex gap-4 p-2 bg-slate-50 rounded-2xl w-fit">
+              <button
+                type="button"
+                onClick={() => setImageMode("file")}
+                className={`px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+                  imageMode === "file"
+                    ? "bg-white text-primary shadow-sm"
+                    : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                <UploadCloud size={16} /> Archivo
+              </button>
+              <button
+                type="button"
+                onClick={() => setImageMode("url")}
+                className={`px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+                  imageMode === "url"
+                    ? "bg-white text-primary shadow-sm"
+                    : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                <LinkIcon size={16} /> Enlace URL
+              </button>
+            </div>
+
+            {imageMode === "file" ? (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2">
+                  Subir Imagen desde el Equipo
+                </label>
+                <div className="relative">
+                  <input
+                    name="imageFile"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    disabled={isLoading}
+                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary/20 focus:bg-white p-4 rounded-3xl outline-none transition-all font-bold text-slate-900 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-black file:uppercase file:tracking-widest file:bg-primary/10 file:text-primary hover:file:bg-primary/20 disabled:opacity-50"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2">
+                  URL de la Imagen
+                </label>
+                <div className="relative">
+                  <ImageIcon
+                    className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300"
+                    size={18}
+                  />
+                  <input
+                    name="imageUrl"
+                    type="url"
+                    onChange={handleUrlChange}
+                    disabled={isLoading}
+                    placeholder="https://ejemplo.com/imagen.jpg"
+                    className="w-full bg-slate-50 border-2 border-transparent focus:border-primary/20 focus:bg-white p-5 pl-14 rounded-3xl outline-none transition-all font-bold text-slate-900 disabled:opacity-50"
+                  />
+                </div>
+              </div>
+            )}
+
+            {imagePreview && (
+              <div className="mt-6">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2 block mb-3">
+                  Vista Previa
+                </label>
+                <div className="relative w-full aspect-video rounded-3xl overflow-hidden bg-slate-100 border-2 border-slate-100">
+                  <img
+                    src={imagePreview}
+                    alt="Vista previa del sorteo"
+                    className="object-cover w-full h-full"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-8">
+          <div className="bg-slate-900 p-10 rounded-[3rem] shadow-2xl relative overflow-hidden text-white space-y-6">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-[80px] -mr-32 -mt-32 pointer-events-none"></div>
+
+            <h3 className="text-xl font-black uppercase italic tracking-widest text-white/90 border-b border-white/10 pb-4 relative z-10">
+              Métricas y Motor RNG
+            </h3>
+
+            <div className="space-y-2 relative z-10">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">
+                Tipo de Sorteo
+              </label>
+              <div className="relative">
+                <Settings2
+                  className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500"
+                  size={18}
+                />
+                <select
+                  name="type"
+                  value={sorteoType}
+                  onChange={(e) =>
+                    setSorteoType(e.target.value as "INTERNAL" | "EXTERNAL")
+                  }
+                  disabled={isLoading}
+                  className="w-full bg-white/10 border-2 border-transparent focus:border-primary focus:bg-white/20 p-5 pl-14 rounded-3xl outline-none font-black text-white appearance-none"
+                >
+                  <option value="INTERNAL" className="text-slate-900">
+                    Sorteo Interno (Automático RNG)
+                  </option>
+                  <option value="EXTERNAL" className="text-slate-900">
+                    Sorteo Externo (Lotería Externa)
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            {sorteoType === "EXTERNAL" && (
+              <div className="space-y-3 relative z-10 pt-4 border-t border-white/10 animate-in fade-in zoom-in-95">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2 flex items-center gap-2">
+                  <Landmark size={14} className="text-indigo-400" /> Bancos
+                  Autorizados
+                </label>
+
+                {configuredBanks.length === 0 ? (
+                  <div className="bg-red-500/20 border border-red-500/30 text-red-400 p-4 rounded-xl text-[10px] font-black uppercase tracking-widest text-center">
+                    El SuperAdmin no ha configurado ningún banco en el sistema.
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {configuredBanks.map((bank) => {
+                      const isSelected = selectedBanks.includes(bank);
+                      return (
+                        <button
+                          key={bank}
+                          type="button"
+                          onClick={() => toggleBank(bank)}
+                          className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border ${
+                            isSelected
+                              ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/30"
+                              : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-white"
+                          }`}
+                        >
+                          {isSelected && <CheckCircle2 size={12} />}
+                          {bank}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-2 relative z-10 pt-2 border-t border-white/5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">
+                Cantidad de Ganadores
+              </label>
+              <div className="relative">
+                <Users
+                  className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500"
+                  size={18}
+                />
+                <input
+                  name="winnersCount"
+                  type="number"
+                  min="1"
+                  defaultValue="1"
+                  required
+                  disabled={isLoading}
+                  className="w-full bg-white/10 border-2 border-transparent focus:border-primary focus:bg-white/20 p-5 pl-14 rounded-3xl outline-none transition-all font-black text-white disabled:opacity-50"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2 relative z-10">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">
+                Precio por Boleto ($)
+              </label>
+              <div className="relative">
+                <DollarSign
+                  className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500"
+                  size={18}
+                />
+                <input
+                  name="pricePerTicket"
+                  type="number"
+                  step="0.01"
+                  min="0.1"
+                  required
+                  disabled={isLoading}
+                  placeholder="0.00"
+                  className="w-full bg-white/10 border-2 border-transparent focus:border-primary focus:bg-white/20 p-5 pl-14 rounded-3xl outline-none transition-all font-black text-white disabled:opacity-50"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2 relative z-10">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">
+                Cantidad de Boletos
+              </label>
+              <div className="relative">
+                <Hash
+                  className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500"
+                  size={18}
+                />
+                <input
+                  name="maxTickets"
+                  type="number"
+                  min="10"
+                  defaultValue="1000"
+                  required
+                  disabled={isLoading}
+                  className="w-full bg-white/10 border-2 border-transparent focus:border-primary focus:bg-white/20 p-5 pl-14 rounded-3xl outline-none transition-all font-black text-white disabled:opacity-50"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2 relative z-10">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">
+                Meta mínima de venta (%)
+              </label>
+              <div className="relative">
+                <Target
+                  className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500"
+                  size={18}
+                />
+                <input
+                  name="minSoldThreshold"
+                  type="number"
+                  min="1"
+                  max="100"
+                  defaultValue="90"
+                  required
+                  disabled={isLoading}
+                  className="w-full bg-white/10 border-2 border-transparent focus:border-primary focus:bg-white/20 p-5 pl-14 rounded-3xl outline-none transition-all font-black text-white disabled:opacity-50"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2 relative z-10">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">
+                Fecha Programada
+              </label>
+              <div className="relative">
+                <Calendar
+                  className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500"
+                  size={18}
+                />
+                <input
+                  name="drawDate"
+                  type="datetime-local"
+                  required
+                  disabled={isLoading}
+                  className="w-full bg-white/10 border-2 border-transparent focus:border-primary focus:bg-white/20 p-5 pl-14 rounded-3xl outline-none transition-all font-black text-white appearance-none disabled:opacity-50"
+                  style={{ colorScheme: "dark" }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={
+              isLoading ||
+              (sorteoType === "EXTERNAL" && selectedBanks.length === 0)
+            }
+            className="w-full bg-primary hover:bg-primary/90 text-white p-7 rounded-[2.5rem] font-black uppercase text-sm tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-[0_20px_40px_-15px_rgba(37,99,235,0.5)] group disabled:opacity-70 disabled:cursor-not-allowed hover:-translate-y-1"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 size={20} className="animate-spin" />
+                Publicando...
+              </>
+            ) : (
+              <>
+                <Save
+                  size={20}
+                  className="group-hover:scale-110 transition-transform"
+                />
+                Publicar Sorteo Oficial
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}

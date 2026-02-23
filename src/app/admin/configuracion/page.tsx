@@ -22,13 +22,11 @@ import {
   deleteUserAccount,
 } from "./actions";
 
-// COMPONENTES EXTERNOS
 import OfficerForm from "./OfficerForm";
-import HeaderIconSelector from "./HeaderIconSelector"; // <--- COMPONENTE NUEVO IMPORTADO
+import HeaderIconSelector from "./HeaderIconSelector";
+import BankConfigClient from "./BankConfigClient";
 
 export const dynamic = "force-dynamic";
-
-// --- SUB-COMPONENTES DE UI ---
 
 function ColorInput({
   label,
@@ -65,8 +63,6 @@ function ColorInput({
   );
 }
 
-// --- COMPONENTE PRINCIPAL ---
-
 export default async function SettingsPage() {
   const cookieStore = await cookies();
   const userId = cookieStore.get("session_token")?.value;
@@ -75,7 +71,6 @@ export default async function SettingsPage() {
     redirect("/auth/login");
   }
 
-  // 1. OBTENCIÓN DE DATOS Y VERIFICACIÓN DE ROL
   const [user, config, logs, admins] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
@@ -93,15 +88,12 @@ export default async function SettingsPage() {
     }),
   ]);
 
-  // Si no es ni admin ni super admin, lo expulsamos
   if (!user || (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN")) {
     redirect("/");
   }
 
-  // VARIABLE DE CONTROL DE ACCESO
   const isSuper = user.role === "SUPER_ADMIN";
 
-  // Obtenemos la configuración o establecemos los valores por defecto del esquema
   const siteConfig = config || {
     siteName: "Sorteos Premium",
     heroText: "SORTEOS PREMIUM",
@@ -112,7 +104,15 @@ export default async function SettingsPage() {
     headerIconType: "ICON",
     headerIconName: "ShieldCheck",
     headerImageUrl: null,
+    bankAccounts: "{}",
   };
+
+  let parsedBanks: Record<string, any> = {};
+  try {
+    parsedBanks = JSON.parse((siteConfig as any).bankAccounts || "{}");
+  } catch (e) {
+    parsedBanks = {};
+  }
 
   const handleUpdateConfig = async (formData: FormData) => {
     "use server";
@@ -133,8 +133,7 @@ export default async function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#020617] p-8 space-y-10 animate-in fade-in duration-1000">
-      {/* HEADER TÁCTICO */}
+    <div className="min-h-screen bg-[#020617] p-8 space-y-10 animate-in fade-in duration-1000 pb-24">
       <header className="border-b border-white/5 pb-8 flex justify-between items-end">
         <div className="space-y-2">
           <div className="flex items-center gap-3 text-primary font-black uppercase tracking-[0.5em] text-[10px]">
@@ -150,13 +149,9 @@ export default async function SettingsPage() {
         </div>
       </header>
 
-      {/* GRID DINÁMICO: Si es ADMIN, la columna de diseño toma más espacio central. Si es SUPER, se divide 5 y 7. */}
       <div
         className={`grid grid-cols-1 ${isSuper ? "lg:grid-cols-12" : "lg:grid-cols-8 lg:justify-center mx-auto max-w-5xl"} gap-10`}
       >
-        {/* ============================================================== */}
-        {/* COLUMNA IZQUIERDA: CONFIGURACIÓN VISUAL (VISIBLE PARA TODOS)   */}
-        {/* ============================================================== */}
         <div
           className={`${isSuper ? "lg:col-span-5" : "lg:col-span-8"} space-y-8`}
         >
@@ -166,9 +161,6 @@ export default async function SettingsPage() {
             </h3>
 
             <form action={handleUpdateConfig} className="space-y-6">
-              {/* ======================================================= */}
-              {/* NUEVO: SELECTOR DE ICONO / IMAGEN DE CABECERA           */}
-              {/* ======================================================= */}
               <HeaderIconSelector
                 defaultType={siteConfig.headerIconType}
                 defaultName={siteConfig.headerIconName}
@@ -176,7 +168,6 @@ export default async function SettingsPage() {
                 isSuper={isSuper}
               />
 
-              {/* SECCIÓN 1: NAVBAR Y MARCA */}
               <div className="bg-black/30 p-6 rounded-2xl border border-white/5 space-y-5">
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 border-b border-white/5 pb-3">
                   <LayoutTemplate size={14} className="text-primary-dynamic" />{" "}
@@ -202,7 +193,6 @@ export default async function SettingsPage() {
                 />
               </div>
 
-              {/* SECCIÓN 2: TEXTO PRINCIPAL (HERO) */}
               <div className="bg-black/30 p-6 rounded-2xl border border-white/5 space-y-5">
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 border-b border-white/5 pb-3">
                   <Type size={14} className="text-primary-dynamic" /> 2. Mensaje
@@ -222,7 +212,6 @@ export default async function SettingsPage() {
                 </div>
               </div>
 
-              {/* SECCIÓN 3: FONDO DE PANTALLA */}
               <div className="bg-black/30 p-6 rounded-2xl border border-white/5 space-y-5">
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 border-b border-white/5 pb-3">
                   <Monitor size={14} className="text-primary-dynamic" /> 3.
@@ -236,7 +225,6 @@ export default async function SettingsPage() {
                 />
               </div>
 
-              {/* SECCIÓN 4: TARJETAS DE SORTEOS */}
               <div className="bg-black/30 p-6 rounded-2xl border border-white/5 space-y-5">
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 border-b border-white/5 pb-3">
                   <CreditCard size={14} className="text-primary-dynamic" /> 4.
@@ -256,7 +244,9 @@ export default async function SettingsPage() {
                 />
               </div>
 
-              {/* BOTÓN DE GUARDAR: Visible solo para SuperAdmin */}
+              {/* INTEGRACIÓN DEL COMPONENTE CLIENTE */}
+              <BankConfigClient initialData={parsedBanks} isSuper={isSuper} />
+
               {isSuper && (
                 <button
                   type="submit"
@@ -268,7 +258,6 @@ export default async function SettingsPage() {
             </form>
           </section>
 
-          {/* AUDITORÍA C4 (Visible para ambos) */}
           <section className="bg-slate-900/40 p-6 rounded-[2rem] border border-white/5 max-h-[250px] overflow-hidden flex flex-col">
             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
               <History size={14} /> Historial de Cambios Recientes
@@ -291,10 +280,6 @@ export default async function SettingsPage() {
           </section>
         </div>
 
-        {/* ============================================================== */}
-        {/* COLUMNA DERECHA: RECLUTAMIENTO Y LISTADO (SOLO SUPER ADMIN)    */}
-        {/* ============================================================== */}
-
         {isSuper && (
           <div className="lg:col-span-7 space-y-8 animate-in fade-in slide-in-from-right-8 duration-700">
             <section className="bg-slate-900/40 p-10 rounded-[3rem] border border-white/5 backdrop-blur-3xl">
@@ -303,7 +288,6 @@ export default async function SettingsPage() {
                 Personal
               </h3>
 
-              {/* ZONA DE ALTA */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
                 <OfficerForm
                   isSuper={false}
@@ -317,7 +301,6 @@ export default async function SettingsPage() {
                 />
               </div>
 
-              {/* ZONA DE CONTROL (LISTA DE ADMINISTRADORES) */}
               <div className="border-t border-white/5 pt-10">
                 <h4 className="text-sm font-black text-white uppercase tracking-widest mb-6 px-2 flex items-center gap-2">
                   <Globe size={18} className="text-primary-dynamic" /> Oficiales
@@ -348,8 +331,7 @@ export default async function SettingsPage() {
                           </p>
                           <p className="text-[10px] text-slate-400 font-bold mt-1">
                             {admin.email}{" "}
-                            <span className="mx-2 opacity-30">|</span>
-                            Estado:{" "}
+                            <span className="mx-2 opacity-30">|</span> Estado:{" "}
                             <span
                               className={
                                 admin.status === "ACTIVE"
@@ -363,7 +345,6 @@ export default async function SettingsPage() {
                         </div>
                       </div>
 
-                      {/* BOTONES DE ACCIÓN PARA SUPERADMIN */}
                       {admin.id !== userId && (
                         <div className="flex items-center gap-2 bg-white/5 p-2 rounded-2xl">
                           <form action={handleToggleStatus}>

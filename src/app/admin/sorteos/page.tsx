@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import Link from "next/link";
 import { deleteRaffle } from "./actions";
 import SorteoActionCell from "./SorteoActionCell";
+import ResolveExternalButton from "./ResolveExternalButton";
 import {
   Edit,
   Trash2,
@@ -12,7 +13,6 @@ import {
   CreditCard,
   Phone,
   Mail,
-  Hash,
   AlertCircle,
   UserX,
 } from "lucide-react";
@@ -78,7 +78,10 @@ export default async function SorteosAdminPage() {
                   100,
                   (raffle.tickets.length / raffle.maxTickets) * 100,
                 );
+                const thresholdPercentage = raffle.minSoldThreshold * 100;
+                const isThresholdMet = soldPercentage >= thresholdPercentage;
                 const isCompleted = raffle.status === "FINISHED";
+                const isExternal = raffle.type === "EXTERNAL";
                 const winningNumbersArray =
                   (raffle as any).winningNumbers || [];
 
@@ -105,11 +108,20 @@ export default async function SorteosAdminPage() {
                             <p className="text-sm font-black text-slate-900 uppercase tracking-tighter line-clamp-1">
                               {raffle.title}
                             </p>
-                            <div className="flex gap-2 mt-1">
-                              <span className="text-[9px] font-bold text-slate-400 tracking-widest uppercase">
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              <span className="text-[9px] font-bold text-slate-400 tracking-widest uppercase bg-slate-100 px-2 py-0.5 rounded-full">
                                 ID: {raffle.id.slice(-6)}
                               </span>
-                              <span className="text-[9px] font-black text-primary tracking-widest uppercase bg-primary/10 px-2 rounded-full">
+                              <span
+                                className={`text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded-full ${
+                                  isExternal
+                                    ? "bg-indigo-100 text-indigo-600"
+                                    : "bg-emerald-100 text-emerald-600"
+                                }`}
+                              >
+                                {isExternal ? "EXTERNO" : "INTERNO"}
+                              </span>
+                              <span className="text-[9px] font-black text-primary tracking-widest uppercase bg-primary/10 px-2 py-0.5 rounded-full">
                                 {raffle.winnersCount} Ganador(es)
                               </span>
                             </div>
@@ -119,15 +131,30 @@ export default async function SorteosAdminPage() {
 
                       <td className="py-6 px-8">
                         <div className="space-y-2 w-32">
-                          <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-500">
-                            <span>{soldPercentage.toFixed(1)}%</span>
+                          <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">
+                            <span
+                              className={
+                                !isThresholdMet && !isCompleted
+                                  ? "text-amber-500 flex items-center gap-1"
+                                  : ""
+                              }
+                            >
+                              {!isThresholdMet && !isCompleted && (
+                                <AlertCircle size={10} />
+                              )}
+                              {soldPercentage.toFixed(1)}%
+                            </span>
                             <span>
                               {raffle.tickets.length}/{raffle.maxTickets}
                             </span>
                           </div>
                           <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                             <div
-                              className="bg-primary h-full rounded-full transition-all"
+                              className={`${
+                                isThresholdMet || isCompleted
+                                  ? "bg-primary"
+                                  : "bg-amber-400"
+                              } h-full rounded-full transition-all`}
                               style={{ width: `${soldPercentage}%` }}
                             />
                           </div>
@@ -159,6 +186,13 @@ export default async function SorteosAdminPage() {
 
                       <td className="py-6 px-8 text-right">
                         <div className="flex items-center justify-end gap-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                          {!isCompleted && isExternal && (
+                            <ResolveExternalButton
+                              raffleId={raffle.id}
+                              isThresholdMet={isThresholdMet}
+                              maxTickets={raffle.maxTickets}
+                            />
+                          )}
                           {!isCompleted && (
                             <Link
                               href={`/admin/sorteos/${raffle.id}/editar`}
@@ -196,7 +230,10 @@ export default async function SorteosAdminPage() {
                                 <div className="bg-slate-900 p-2 rounded-xl text-white">
                                   <Trophy size={16} />
                                 </div>
-                                Auditoría de Resultados: Tómbola Digital
+                                Auditoría de Resultados:{" "}
+                                {isExternal
+                                  ? "Lotería Externa"
+                                  : "Tómbola Digital"}
                               </h4>
 
                               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -209,10 +246,18 @@ export default async function SorteosAdminPage() {
                                     return (
                                       <div
                                         key={index}
-                                        className={`flex items-start gap-4 p-5 rounded-2xl border transition-all ${winningTicket ? "bg-emerald-50 border-emerald-100 hover:shadow-md" : "bg-amber-50/50 border-amber-200 border-dashed"}`}
+                                        className={`flex items-start gap-4 p-5 rounded-2xl border transition-all ${
+                                          winningTicket
+                                            ? "bg-emerald-50 border-emerald-100 hover:shadow-md"
+                                            : "bg-amber-50/50 border-amber-200 border-dashed"
+                                        }`}
                                       >
                                         <div
-                                          className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-black flex-shrink-0 shadow-md ${winningTicket ? "bg-slate-900 text-white" : "bg-amber-500 text-white animate-pulse"}`}
+                                          className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-black flex-shrink-0 shadow-md ${
+                                            winningTicket
+                                              ? "bg-slate-900 text-white"
+                                              : "bg-amber-500 text-white animate-pulse"
+                                          }`}
                                         >
                                           <span className="text-[8px] uppercase tracking-widest opacity-70">
                                             Número

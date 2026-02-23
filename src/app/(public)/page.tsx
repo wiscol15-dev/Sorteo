@@ -1,6 +1,14 @@
 import prisma from "@/lib/prisma";
 import Link from "next/link";
-import { Trophy, Clock, ChevronRight, Hash, ShieldCheck } from "lucide-react";
+import {
+  Trophy,
+  Clock,
+  ChevronRight,
+  Hash,
+  ShieldCheck,
+  Shuffle,
+  MousePointerClick,
+} from "lucide-react";
 import { iconMap } from "@/app/admin/configuracion/HeaderIconSelector";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +39,8 @@ const styles = {
   placeholderBox: "w-full h-full flex items-center justify-center opacity-30",
   badgeFinished:
     "absolute top-4 right-4 md:top-6 md:right-6 bg-amber-500 text-black px-4 py-1.5 md:px-5 md:py-2 rounded-xl text-[9px] font-black uppercase tracking-[0.2em] md:tracking-[0.3em] shadow-2xl flex items-center gap-2 z-20 animate-in zoom-in duration-500",
+  typeBadge:
+    "absolute top-4 left-4 md:top-6 md:left-6 bg-black/60 backdrop-blur-md text-white px-4 py-1.5 md:px-5 md:py-2 rounded-xl text-[9px] font-black uppercase tracking-[0.2em] md:tracking-[0.3em] shadow-2xl flex items-center gap-2 z-20",
   progressContainer: "absolute bottom-0 left-0 right-0 h-1.5 bg-black/50 z-20",
   progressFill:
     "h-full transition-all duration-1000 shadow-[0_0_10px_var(--primary-brand)]",
@@ -101,7 +111,6 @@ export default async function Home() {
         <h2 className={`${styles.welcomeText} text-primary-dynamic`}>
           Bienvenido a {siteName}
         </h2>
-
         <h1 className={styles.heroTitle}>{heroText}</h1>
       </div>
 
@@ -115,6 +124,7 @@ export default async function Home() {
             const isActive = raffle.status === "ACTIVE";
             const isFinished = raffle.status === "FINISHED";
             const winners = raffle.tickets.filter((t) => t.isWinner);
+            const isExternal = raffle.type === "EXTERNAL";
 
             return (
               <div key={raffle.id} className={styles.card}>
@@ -133,6 +143,20 @@ export default async function Home() {
                       <Trophy className="w-12 h-12 md:w-16 md:h-16" />
                     </div>
                   )}
+
+                  <div className={styles.typeBadge}>
+                    {isExternal ? (
+                      <>
+                        <Shuffle className="w-3 h-3 text-indigo-400" /> Sorteo
+                        Flash
+                      </>
+                    ) : (
+                      <>
+                        <MousePointerClick className="w-3 h-3 text-primary-dynamic" />{" "}
+                        Elige tu número
+                      </>
+                    )}
+                  </div>
 
                   {isFinished && (
                     <div className={styles.badgeFinished}>
