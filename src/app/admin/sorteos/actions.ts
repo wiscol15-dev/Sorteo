@@ -3,8 +3,6 @@
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
 import { sendEmail } from "@/lib/mail";
 import { getTicketEmailTemplate } from "@/lib/templates/ticket-email";
 import { cookies } from "next/headers";
@@ -30,19 +28,14 @@ export async function createRaffle(formData: FormData) {
     if (!title || !description || !drawDateString) {
       return { success: false, error: "Campos obligatorios faltantes." };
     }
-
-    if (!pricePerTicket || pricePerTicket <= 0) {
+    if (!pricePerTicket || pricePerTicket <= 0)
       return { success: false, error: "Precio inválido." };
-    }
-
-    if (!maxTickets || maxTickets <= 0) {
+    if (!maxTickets || maxTickets <= 0)
       return { success: false, error: "Cantidad de boletos inválida." };
-    }
 
     const drawDate = new Date(drawDateString);
-    if (isNaN(drawDate.getTime())) {
+    if (isNaN(drawDate.getTime()))
       return { success: false, error: "Fecha inválida." };
-    }
 
     const minSoldThreshold =
       minSoldRaw && minSoldRaw > 0 ? minSoldRaw / 100 : 0.9;
@@ -54,8 +47,6 @@ export async function createRaffle(formData: FormData) {
     if (imageFile && imageFile.size > 0) {
       const bytes = await imageFile.arrayBuffer();
       const buffer = Buffer.from(bytes);
-
-      // FIX VERCEL: Usar Base64 para la imagen del sorteo también (OPCIONAL, pero recomendado en Serverless)
       const base64Image = buffer.toString("base64");
       const mimeType = imageFile.type || "image/png";
       finalImageUrl = `data:${mimeType};base64,${base64Image}`;
@@ -79,7 +70,6 @@ export async function createRaffle(formData: FormData) {
         isFinished: false,
       },
     });
-
     isSuccess = true;
   } catch (error) {
     return { success: false, error: "Fallo en la creación del sorteo." };
@@ -98,19 +88,13 @@ export async function buyTickets(
   selectedNumbers: number[],
 ) {
   try {
-    if (!selectedNumbers || selectedNumbers.length === 0) {
+    if (!selectedNumbers || selectedNumbers.length === 0)
       return { success: false, error: "No seleccionaste boletos." };
-    }
 
     const result = await prisma.$transaction(
       async (tx) => {
-        const raffle = await tx.raffle.findUnique({
-          where: { id: raffleId },
-        });
-
-        const user = await tx.user.findUnique({
-          where: { id: userId },
-        });
+        const raffle = await tx.raffle.findUnique({ where: { id: raffleId } });
+        const user = await tx.user.findUnique({ where: { id: userId } });
 
         if (!raffle || !user) throw new Error("Recurso no encontrado.");
         if (raffle.status !== "ACTIVE") throw new Error("Sorteo no activo.");
@@ -128,14 +112,19 @@ export async function buyTickets(
 
         const unique = [...new Set(selectedNumbers)];
         if (unique.length !== selectedNumbers.length)
-          throw new Error("Números duplicados detectados.");
+          throw new Error("Números duplicados.");
 
         const existing = await tx.ticket.findMany({
-          where: { raffleId, number: { in: selectedNumbers } },
+          where: {
+            raffleId,
+            number: { in: selectedNumbers },
+            status: { in: ["VALID", "PENDING"] },
+          },
         });
-
         if (existing.length > 0)
-          throw new Error("Algunos boletos ya fueron vendidos.");
+          throw new Error(
+            "Algunos boletos ya fueron vendidos o están en proceso.",
+          );
 
         await tx.user.update({
           where: { id: userId },
@@ -168,10 +157,7 @@ export async function buyTickets(
           totalCost,
         };
       },
-      {
-        maxWait: 15000,
-        timeout: 45000,
-      },
+      { maxWait: 15000, timeout: 45000 },
     );
 
     try {
@@ -181,7 +167,6 @@ export async function buyTickets(
         numbers: selectedNumbers,
         total: result.totalCost,
       });
-
       await sendEmail(
         result.email,
         `Boletos Oficiales: ${result.raffleTitle}`,
@@ -193,137 +178,16 @@ export async function buyTickets(
     revalidatePath("/billetera");
     revalidatePath("/mis-tickets");
     revalidatePath("/admin");
-
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
 }
 
-export async function buyRandomTickets(
-  raffleId: string,
-  userId: string,
-  quantity: number,
-) {
-  try {
-    if (!quantity || quantity <= 0) {
-      return { success: false, error: "Cantidad inválida." };
-    }
-
-    const result = await prisma.$transaction(
-      async (tx) => {
-        const raffle = await tx.raffle.findUnique({
-          where: { id: raffleId },
-        });
-
-        const user = await tx.user.findUnique({
-          where: { id: userId },
-        });
-
-        if (!raffle || !user) throw new Error("Recurso no encontrado.");
-        if (raffle.status !== "ACTIVE") throw new Error("Sorteo no activo.");
-        if (raffle.type !== "EXTERNAL")
-          throw new Error("Esta función es solo para sorteos externos.");
-
-        const ticketPrice = Number(raffle.pricePerTicket);
-        const totalCost = quantity * ticketPrice;
-
-        if (Number(user.walletBalance) < totalCost)
-          throw new Error("Saldo insuficiente.");
-
-        const existingTickets = await tx.ticket.findMany({
-          where: { raffleId },
-          select: { number: true },
-        });
-
-        const soldNumbers = new Set(existingTickets.map((t) => t.number));
-        const availableNumbers: number[] = [];
-
-        for (let i = 1; i <= raffle.maxTickets; i++) {
-          if (!soldNumbers.has(i)) {
-            availableNumbers.push(i);
-          }
-        }
-
-        if (availableNumbers.length < quantity) {
-          throw new Error(
-            `Solo quedan ${availableNumbers.length} boletos disponibles.`,
-          );
-        }
-
-        const selectedNumbers: number[] = [];
-        for (let i = 0; i < quantity; i++) {
-          const randomIndex = Math.floor(
-            Math.random() * availableNumbers.length,
-          );
-          selectedNumbers.push(availableNumbers[randomIndex]);
-          availableNumbers.splice(randomIndex, 1);
-        }
-
-        await tx.user.update({
-          where: { id: userId },
-          data: { walletBalance: { decrement: totalCost } },
-        });
-
-        await tx.ticket.createMany({
-          data: selectedNumbers.map((num) => ({
-            number: num,
-            userId,
-            raffleId,
-            price: ticketPrice,
-            status: "VALID",
-          })),
-        });
-
-        await tx.transaction.create({
-          data: {
-            userId,
-            amount: totalCost,
-            type: "PURCHASE",
-            status: "COMPLETED",
-          },
-        });
-
-        return {
-          email: user.email,
-          name: user.firstName,
-          raffleTitle: raffle.title,
-          totalCost,
-          selectedNumbers,
-        };
-      },
-      {
-        maxWait: 15000,
-        timeout: 45000,
-      },
-    );
-
-    try {
-      const html = getTicketEmailTemplate({
-        userName: result.name,
-        raffleTitle: result.raffleTitle,
-        numbers: result.selectedNumbers,
-        total: result.totalCost,
-      });
-
-      await sendEmail(
-        result.email,
-        `Boletos Oficiales: ${result.raffleTitle}`,
-        html,
-      );
-    } catch (e) {}
-
-    revalidatePath(`/sorteo/${raffleId}`);
-    revalidatePath("/billetera");
-    revalidatePath("/mis-tickets");
-    revalidatePath("/admin");
-
-    return { success: true, assignedNumbers: result.selectedNumbers };
-  } catch (error: any) {
-    return { success: false, error: error.message };
-  }
-}
-
+// ============================================================================
+// LÓGICA DE ASIGNACIÓN ALEATORIA (EL "CHISTE" DEL SORTEO EXTERNO)
+// Ultra-Optimizada para seleccionar números instantáneamente
+// ============================================================================
 export async function buyRandomTicketsManual(formData: FormData) {
   try {
     const raffleId = formData.get("raffleId") as string;
@@ -335,10 +199,8 @@ export async function buyRandomTicketsManual(formData: FormData) {
     const buyerEmail = formData.get("buyerEmail") as string;
     const receiptFile = formData.get("receiptFile") as File;
 
-    if (!raffleId || !userId || !quantity || quantity <= 0) {
-      return { success: false, error: "Datos de orden inválidos." };
-    }
-
+    if (!raffleId || !userId || !quantity || quantity <= 0)
+      return { success: false, error: "Datos inválidos." };
     if (
       !buyerName ||
       !buyerLastName ||
@@ -352,7 +214,7 @@ export async function buyRandomTicketsManual(formData: FormData) {
       };
     }
 
-    // FIX VERCEL SERVERLESS: Encriptar archivo a Data URI Base64 directamente a la DB
+    // Convertimos la imagen a Base64 para guardarla directamente en Supabase/Postgres
     const bytes = await receiptFile.arrayBuffer();
     const buffer = Buffer.from(bytes);
     const base64Image = buffer.toString("base64");
@@ -363,9 +225,7 @@ export async function buyRandomTicketsManual(formData: FormData) {
 
     await prisma.$transaction(
       async (tx) => {
-        const raffle = await tx.raffle.findUnique({
-          where: { id: raffleId },
-        });
+        const raffle = await tx.raffle.findUnique({ where: { id: raffleId } });
 
         if (!raffle) throw new Error("Sorteo no encontrado.");
         if (raffle.status !== "ACTIVE") throw new Error("Sorteo no activo.");
@@ -375,35 +235,41 @@ export async function buyRandomTicketsManual(formData: FormData) {
         const ticketPrice = Number(raffle.pricePerTicket);
         const totalCost = quantity * ticketPrice;
 
+        // 1. Buscamos ÚNICAMENTE los números que ya están vendidos o en proceso
         const existingTickets = await tx.ticket.findMany({
-          where: { raffleId },
+          where: { raffleId, status: { in: ["VALID", "PENDING"] } },
           select: { number: true },
         });
 
+        // 2. Usamos una Tabla Hash (Set) para que la computadora encuentre los libres instantáneamente
         const soldNumbers = new Set(existingTickets.map((t) => t.number));
         const availableNumbers: number[] = [];
 
+        // 3. Recopilamos todos los boletos disponibles
         for (let i = 1; i <= raffle.maxTickets; i++) {
           if (!soldNumbers.has(i)) {
             availableNumbers.push(i);
           }
         }
 
+        // 4. Verificamos que haya suficientes
         if (availableNumbers.length < quantity) {
           throw new Error(
             `Solo quedan ${availableNumbers.length} boletos disponibles.`,
           );
         }
 
+        // 5. La computadora escoge al azar de la lista de disponibles
         const selectedNumbers: number[] = [];
         for (let i = 0; i < quantity; i++) {
           const randomIndex = Math.floor(
             Math.random() * availableNumbers.length,
           );
           selectedNumbers.push(availableNumbers[randomIndex]);
-          availableNumbers.splice(randomIndex, 1);
+          availableNumbers.splice(randomIndex, 1); // Lo quitamos para no repetirlo
         }
 
+        // 6. Creamos la Transacción Pendiente
         const transaction = await tx.transaction.create({
           data: {
             userId,
@@ -417,6 +283,7 @@ export async function buyRandomTicketsManual(formData: FormData) {
           },
         });
 
+        // 7. Creamos los tickets asignados con estatus PENDING ligados a la transacción
         await tx.ticket.createMany({
           data: selectedNumbers.map((num) => ({
             number: num,
@@ -428,10 +295,7 @@ export async function buyRandomTicketsManual(formData: FormData) {
           })),
         });
       },
-      {
-        maxWait: 15000,
-        timeout: 45000,
-      },
+      { maxWait: 15000, timeout: 45000 },
     );
 
     revalidatePath(`/sorteo/${raffleId}`);
@@ -464,12 +328,11 @@ export async function executeRaffleDraw(raffleId: string) {
     ).length;
     const minimumRequired = raffle.maxTickets * raffle.minSoldThreshold;
 
-    if (soldTickets < minimumRequired) {
+    if (soldTickets < minimumRequired)
       return {
         success: false,
         error: "Ventas insuficientes. Por favor, prolonga la fecha del sorteo.",
       };
-    }
 
     const winnersCount = Math.min(raffle.winnersCount, raffle.maxTickets);
     const winningNumbers: number[] = [];
@@ -484,7 +347,6 @@ export async function executeRaffleDraw(raffleId: string) {
         where: { raffleId, number: { in: winningNumbers } },
         data: { isWinner: true },
       });
-
       await tx.raffle.update({
         where: { id: raffleId },
         data: {
@@ -498,9 +360,8 @@ export async function executeRaffleDraw(raffleId: string) {
 
     revalidatePath("/admin/sorteos");
     revalidatePath(`/sorteo/${raffleId}`);
-    revalidatePath("/sorteos");
+    revalidatePath("/");
     revalidatePath("/mis-boletos");
-
     return { success: true, winningNumbers };
   } catch (error) {
     return {
@@ -534,27 +395,19 @@ export async function resolveExternalRaffle(
     ).length;
     const minimumRequired = raffle.maxTickets * raffle.minSoldThreshold;
 
-    if (soldTickets < minimumRequired) {
+    if (soldTickets < minimumRequired)
       return {
         success: false,
-        error:
-          "Ventas insuficientes. Por favor, prolonga la fecha del sorteo en la edición.",
+        error: "Ventas insuficientes. Por favor, prolonga la fecha.",
       };
-    }
-
-    if (winningNumber <= 0 || winningNumber > raffle.maxTickets) {
-      return {
-        success: false,
-        error: "El número ganador se encuentra fuera del rango de boletos.",
-      };
-    }
+    if (winningNumber <= 0 || winningNumber > raffle.maxTickets)
+      return { success: false, error: "Número fuera de rango." };
 
     await prisma.$transaction(async (tx) => {
       await tx.ticket.updateMany({
         where: { raffleId, number: winningNumber },
         data: { isWinner: true },
       });
-
       await tx.raffle.update({
         where: { id: raffleId },
         data: {
@@ -568,9 +421,8 @@ export async function resolveExternalRaffle(
 
     revalidatePath("/admin/sorteos");
     revalidatePath(`/sorteo/${raffleId}`);
-    revalidatePath("/sorteos");
+    revalidatePath("/");
     revalidatePath("/mis-boletos");
-
     return { success: true };
   } catch (error) {
     return { success: false, error: "Fallo al procesar el ganador externo." };
@@ -581,7 +433,6 @@ export async function depositFunds(userId: string, amount: number) {
   try {
     if (!amount || amount <= 0)
       return { success: false, error: "Monto inválido." };
-
     await prisma.$transaction([
       prisma.user.update({
         where: { id: userId },
@@ -591,10 +442,8 @@ export async function depositFunds(userId: string, amount: number) {
         data: { userId, amount, type: "DEPOSIT", status: "COMPLETED" },
       }),
     ]);
-
     revalidatePath("/billetera");
     revalidatePath("/admin/users");
-
     return { success: true };
   } catch (error) {
     return { success: false, error: "Fallo al procesar recarga." };
@@ -604,7 +453,6 @@ export async function depositFunds(userId: string, amount: number) {
 export async function registerUserByAdmin(formData: FormData) {
   try {
     const email = (formData.get("email") as string)?.toLowerCase()?.trim();
-
     if (!email) return { success: false, error: "Email requerido." };
 
     const newUser = await prisma.user.create({
@@ -618,7 +466,6 @@ export async function registerUserByAdmin(formData: FormData) {
         role: "USER",
       },
     });
-
     revalidatePath("/admin/users");
     return { success: true, userId: newUser.id };
   } catch (error: any) {
@@ -636,20 +483,12 @@ export async function deleteRaffle(id: string) {
   try {
     const cookieStore = cookies();
     const sessionToken = (await cookieStore).get("session_token")?.value;
-
     if (!sessionToken)
       return { success: false, error: "AUTENTICACIÓN REQUERIDA." };
 
-    const user = await prisma.user.findUnique({
-      where: { id: sessionToken },
-    });
-
-    if (user?.role !== "SUPER_ADMIN") {
-      return {
-        success: false,
-        error: "ACCESS_DENIED: Privilegios insuficientes.",
-      };
-    }
+    const user = await prisma.user.findUnique({ where: { id: sessionToken } });
+    if (user?.role !== "SUPER_ADMIN")
+      return { success: false, error: "ACCESS_DENIED." };
 
     await prisma.$transaction(async (tx) => {
       await tx.ticket.deleteMany({ where: { raffleId: id } });
@@ -659,7 +498,6 @@ export async function deleteRaffle(id: string) {
     revalidatePath("/admin/sorteos");
     revalidatePath("/admin");
     revalidatePath("/");
-
     return { success: true };
   } catch (error) {
     return { success: false, error: "Fallo al eliminar el sorteo." };
@@ -668,7 +506,6 @@ export async function deleteRaffle(id: string) {
 
 export async function updateRaffle(id: string, formData: FormData) {
   let isSuccess = false;
-
   try {
     const title = (formData.get("title") as string)?.trim();
     const description = (formData.get("description") as string)?.trim();
@@ -689,7 +526,6 @@ export async function updateRaffle(id: string, formData: FormData) {
     if (imageFile && imageFile.size > 0) {
       const bytes = await imageFile.arrayBuffer();
       const buffer = Buffer.from(bytes);
-
       const base64Image = buffer.toString("base64");
       const mimeType = imageFile.type || "image/png";
       finalImageUrl = `data:${mimeType};base64,${base64Image}`;
@@ -705,19 +541,12 @@ export async function updateRaffle(id: string, formData: FormData) {
       winnersCount,
       drawDate,
     };
-
-    if (minSoldRaw && minSoldRaw > 0) {
+    if (minSoldRaw && minSoldRaw > 0)
       updateData.minSoldThreshold = minSoldRaw / 100;
-    }
-
     if (finalImageUrl) updateData.imageUrl = finalImageUrl;
     if (type) updateData.type = type;
 
-    await prisma.raffle.update({
-      where: { id },
-      data: updateData,
-    });
-
+    await prisma.raffle.update({ where: { id }, data: updateData });
     isSuccess = true;
   } catch (error) {
     return { success: false, error: "Fallo al actualizar sorteo." };
