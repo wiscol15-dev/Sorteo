@@ -47,12 +47,12 @@ interface Props {
   maxTickets: number;
   pricePerTicket: number;
   soldNumbers: number[];
+  totalSold: number;
   userId: string | null;
   userBalance: number;
   bankAccounts: Record<string, BankAccount>;
 }
 
-// Límite de botones renderizados a la vez para no congelar el celular
 const ITEMS_PER_PAGE = 100;
 
 export default function TicketSelector({
@@ -63,6 +63,7 @@ export default function TicketSelector({
   maxTickets,
   pricePerTicket,
   soldNumbers,
+  totalSold,
   userId,
   userBalance,
   bankAccounts,
@@ -85,15 +86,13 @@ export default function TicketSelector({
   const [receiptName, setReceiptName] = useState<string>("");
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  // PAGINACIÓN PARA CELULARES
   const [currentPage, setCurrentPage] = useState(1);
   const totalPages = Math.ceil(maxTickets / ITEMS_PER_PAGE);
 
   const isExternal = type === "EXTERNAL";
-  const availableCount = maxTickets - soldNumbers.length;
+  const availableCount = maxTickets - totalSold;
   const isSoldOut = availableCount <= 0;
 
-  // Solo calculamos los números de la página actual para evitar colapso de memoria
   const currentViewNumbers = useMemo(() => {
     if (isExternal) return [];
     const startNum = (currentPage - 1) * ITEMS_PER_PAGE + 1;
@@ -103,14 +102,6 @@ export default function TicketSelector({
       (_, i) => startNum + i,
     );
   }, [maxTickets, currentPage, isExternal]);
-
-  // Obtener números disponibles generales para el botón de "Auto Seleccionar"
-  const availableNumbersFull = useMemo(() => {
-    if (isExternal) return [];
-    return Array.from({ length: maxTickets }, (_, i) => i + 1).filter(
-      (num) => !soldNumbers.includes(num),
-    );
-  }, [maxTickets, soldNumbers, isExternal]);
 
   const currentSelectionCount = isExternal ? quantity : selectedNumbers.length;
   const totalCost = isSoldOut ? 0 : currentSelectionCount * pricePerTicket;
@@ -128,12 +119,9 @@ export default function TicketSelector({
 
   const handleSelectPageAvailable = () => {
     setError(null);
-    // Seleccionamos solo los disponibles de la PÁGINA ACTUAL para no saturar al usuario
     const availableInPage = currentViewNumbers.filter(
       (num) => !soldNumbers.includes(num),
     );
-
-    // Si ya todos los de esta página están seleccionados, los deseleccionamos
     const allPageSelected = availableInPage.every((num) =>
       selectedNumbers.includes(num),
     );
@@ -143,7 +131,6 @@ export default function TicketSelector({
         prev.filter((num) => !availableInPage.includes(num)),
       );
     } else {
-      // Mantenemos los que ya tenía de otras páginas y sumamos los de esta página
       const newSelections = new Set([...selectedNumbers, ...availableInPage]);
       setSelectedNumbers(Array.from(newSelections));
     }
@@ -204,7 +191,6 @@ export default function TicketSelector({
     formData.append("raffleId", raffleId);
     formData.append("userId", userId);
 
-    // Si es externo toma quantity, si es interno toma la longitud de números seleccionados
     const qtyToSend = isExternal ? quantity : selectedNumbers.length;
     formData.append("quantity", qtyToSend.toString());
 

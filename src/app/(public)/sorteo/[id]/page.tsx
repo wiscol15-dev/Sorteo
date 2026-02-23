@@ -2,10 +2,22 @@ import prisma from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import Image from "next/image";
-import TicketSelector from "./TicketSelector";
-import { Trophy, Crown, ShieldCheck } from "lucide-react";
+import dynamic from "next/dynamic";
+import { Trophy, Crown, ShieldCheck, Loader2 } from "lucide-react";
 
-export const dynamic = "force-dynamic";
+const TicketSelectorDynamic = dynamic(() => import("./TicketSelector"), {
+  loading: () => (
+    <div className="flex flex-col items-center justify-center p-20 bg-slate-900/40 backdrop-blur-3xl rounded-[3.5rem] border border-white/5">
+      <Loader2 size={40} className="animate-spin text-primary-dynamic mb-4" />
+      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest animate-pulse">
+        Optimizando entorno seguro...
+      </p>
+    </div>
+  ),
+  ssr: false,
+});
+
+export const dynamicConfig = "force-dynamic";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -14,20 +26,11 @@ interface Props {
 export default async function SorteoDetallePage({ params }: Props) {
   const { id } = await params;
 
-  // OPTIMIZACIÓN SENIOR: Consultas separadas y ligeras. Ya no descargamos todos los usuarios.
-  const [raffle, config, soldTicketsData] = await Promise.all([
+  const [raffle, config] = await Promise.all([
     prisma.raffle.findUnique({
       where: { id },
     }),
     prisma.siteConfig.findFirst(),
-    // Solo traemos los puros números que ya no están disponibles (válidos o pendientes de pago)
-    prisma.ticket.findMany({
-      where: {
-        raffleId: id,
-        status: { in: ["VALID", "PENDING"] },
-      },
-      select: { number: true },
-    }),
   ]);
 
   if (!raffle) return notFound();
@@ -40,9 +43,30 @@ export default async function SorteoDetallePage({ params }: Props) {
   }
 
   const isFinished = raffle.status === "FINISHED";
-  const soldNumbers = soldTicketsData.map((t) => t.number);
+  const isExternal = raffle.type === "EXTERNAL";
 
-  // Solo buscamos al ganador si el sorteo ya terminó, ahorrando memoria
+  let soldNumbers: number[] = [];
+  let totalSold = 0;
+
+  if (isExternal) {
+    totalSold = await prisma.ticket.count({
+      where: {
+        raffleId: id,
+        status: { in: ["VALID", "PENDING"] },
+      },
+    });
+  } else {
+    const soldTicketsData = await prisma.ticket.findMany({
+      where: {
+        raffleId: id,
+        status: { in: ["VALID", "PENDING"] },
+      },
+      select: { number: true },
+    });
+    soldNumbers = soldTicketsData.map((t) => t.number);
+    totalSold = soldNumbers.length;
+  }
+
   let winnerTicket = null;
   if (isFinished && raffle.winningNumber) {
     winnerTicket = await prisma.ticket.findFirst({
@@ -164,13 +188,13 @@ export default async function SorteoDetallePage({ params }: Props) {
                     <span className="text-primary-dynamic">Participación</span>
                   </h1>
                   <p className="text-slate-400 text-xs font-medium uppercase tracking-wider opacity-60">
-                    {raffle.type === "EXTERNAL"
+                    {isExternal
                       ? "Sorteo con Super Gana"
                       : "Sorteo en curso. Selecciona tus números de la suerte en la grilla."}
                   </p>
                 </div>
 
-                <TicketSelector
+                <TicketSelectorDynamic
                   raffleId={raffle.id}
                   raffleTitle={raffle.title}
                   raffleDescription={raffle.description}
@@ -178,6 +202,7 @@ export default async function SorteoDetallePage({ params }: Props) {
                   maxTickets={raffle.maxTickets}
                   pricePerTicket={Number(raffle.pricePerTicket)}
                   soldNumbers={soldNumbers}
+                  totalSold={totalSold}
                   userId={currentUserId}
                   userBalance={currentUserBalance}
                   bankAccounts={bankAccounts}
