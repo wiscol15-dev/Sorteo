@@ -14,16 +14,20 @@ interface Props {
 export default async function SorteoDetallePage({ params }: Props) {
   const { id } = await params;
 
-  const [raffle, config] = await Promise.all([
+  // OPTIMIZACIÓN SENIOR: Consultas separadas y ligeras. Ya no descargamos todos los usuarios.
+  const [raffle, config, soldTicketsData] = await Promise.all([
     prisma.raffle.findUnique({
       where: { id },
-      include: {
-        tickets: {
-          include: { user: { select: { firstName: true, lastName: true } } },
-        },
-      },
     }),
     prisma.siteConfig.findFirst(),
+    // Solo traemos los puros números que ya no están disponibles (válidos o pendientes de pago)
+    prisma.ticket.findMany({
+      where: {
+        raffleId: id,
+        status: { in: ["VALID", "PENDING"] },
+      },
+      select: { number: true },
+    }),
   ]);
 
   if (!raffle) return notFound();
@@ -36,8 +40,16 @@ export default async function SorteoDetallePage({ params }: Props) {
   }
 
   const isFinished = raffle.status === "FINISHED";
-  const winnerTicket = raffle.tickets.find((t) => t.isWinner);
-  const soldNumbers = raffle.tickets.map((t) => t.number);
+  const soldNumbers = soldTicketsData.map((t) => t.number);
+
+  // Solo buscamos al ganador si el sorteo ya terminó, ahorrando memoria
+  let winnerTicket = null;
+  if (isFinished && raffle.winningNumber) {
+    winnerTicket = await prisma.ticket.findFirst({
+      where: { raffleId: id, number: raffle.winningNumber, status: "VALID" },
+      include: { user: { select: { firstName: true, lastName: true } } },
+    });
+  }
 
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get("session_token")?.value;
