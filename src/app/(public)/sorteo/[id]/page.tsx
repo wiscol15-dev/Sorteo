@@ -2,22 +2,10 @@ import prisma from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import Image from "next/image";
-import dynamic from "next/dynamic";
-import { Trophy, Crown, ShieldCheck, Loader2 } from "lucide-react";
+import { Trophy, Crown, ShieldCheck } from "lucide-react";
+import TicketSelector from "./TicketSelector"; // Importación estándar (Corrige el error de compilación)
 
-const TicketSelectorDynamic = dynamic(() => import("./TicketSelector"), {
-  loading: () => (
-    <div className="flex flex-col items-center justify-center p-20 bg-slate-900/40 backdrop-blur-3xl rounded-[3.5rem] border border-white/5">
-      <Loader2 size={40} className="animate-spin text-primary-dynamic mb-4" />
-      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest animate-pulse">
-        Optimizando entorno seguro...
-      </p>
-    </div>
-  ),
-  ssr: false,
-});
-
-export const dynamicConfig = "force-dynamic";
+export const dynamic = "force-dynamic";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -48,6 +36,7 @@ export default async function SorteoDetallePage({ params }: Props) {
   let soldNumbers: number[] = [];
   let totalSold = 0;
 
+  // OPTIMIZACIÓN EXTREMA: Solo enviamos el conteo si es externo (Ahorra MBs de datos en móviles)
   if (isExternal) {
     totalSold = await prisma.ticket.count({
       where: {
@@ -189,12 +178,12 @@ export default async function SorteoDetallePage({ params }: Props) {
                   </h1>
                   <p className="text-slate-400 text-xs font-medium uppercase tracking-wider opacity-60">
                     {isExternal
-                      ? "Sorteo con Super Gana"
+                      ? "Sorteo Especial. Completa tu pago externo para adquirir tickets."
                       : "Sorteo en curso. Selecciona tus números de la suerte en la grilla."}
                   </p>
                 </div>
 
-                <TicketSelectorDynamic
+                <TicketSelector
                   raffleId={raffle.id}
                   raffleTitle={raffle.title}
                   raffleDescription={raffle.description}

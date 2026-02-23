@@ -93,7 +93,8 @@ export default function TicketSelector({
   const isSoldOut = availableCount <= 0;
 
   // Paginación y Grilla (Se calcula rápido y solo renderiza la página actual)
-  const totalPages = Math.ceil(maxTickets / ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(maxTickets / ITEMS_PER_PAGE); // FIX: Variable corregida
+
   const currentViewNumbers = useMemo(() => {
     if (isExternal) return [];
     const startNum = (currentPage - 1) * ITEMS_PER_PAGE + 1;
@@ -297,6 +298,7 @@ export default function TicketSelector({
           </div>
         </div>
 
+        {/* Solo mostramos la tarjeta de Wallet si el sorteo NO es externo */}
         {!isExternal && (
           <div className="bg-black/40 px-6 py-3 rounded-2xl border border-white/5 flex items-center gap-4 shadow-inner shrink-0">
             <Wallet className="text-slate-500" size={20} />
@@ -642,7 +644,7 @@ export default function TicketSelector({
             /* ==============================================================
                MODO INTERNO: GRILLA DE NÚMEROS Y PAGO CON WALLET
                ============================================================== */
-            <>
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   {selectedNumbers.length > 0 ? (
@@ -681,15 +683,15 @@ export default function TicketSelector({
                         disabled={isSold || isPending}
                         onClick={() => toggle(num)}
                         className={`
-                          aspect-square rounded-2xl text-xs md:text-sm font-black transition-all duration-300 relative group/btn
-                          ${
-                            isSold
-                              ? "bg-white/5 text-white/10 cursor-not-allowed border border-transparent"
-                              : isSelected
-                                ? "bg-primary-dynamic text-white shadow-[0_0_25px_var(--primary-brand-alpha)] scale-110 border border-white/20 z-10"
-                                : "bg-white/5 text-slate-400 hover:text-white border border-white/5 hover:border-primary-dynamic/50 hover:bg-primary-dynamic/5"
-                          }
-                        `}
+                        aspect-square rounded-2xl text-xs md:text-sm font-black transition-all duration-300 relative group/btn
+                        ${
+                          isSold
+                            ? "bg-white/5 text-white/10 cursor-not-allowed border border-transparent"
+                            : isSelected
+                              ? "bg-primary-dynamic text-white shadow-[0_0_25px_var(--primary-brand-alpha)] scale-110 border border-white/20 z-10"
+                              : "bg-white/5 text-slate-400 hover:text-white border border-white/5 hover:border-primary-dynamic/50 hover:bg-primary-dynamic/5"
+                        }
+                      `}
                       >
                         {num.toString().padStart(2, "0")}
                         {isSold && (
@@ -788,7 +790,7 @@ export default function TicketSelector({
                   </p>
                 )}
               </div>
-            </>
+            </div>
           )}
         </>
       )}
