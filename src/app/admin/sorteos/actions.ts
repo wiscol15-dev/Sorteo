@@ -184,10 +184,6 @@ export async function buyTickets(
   }
 }
 
-// ============================================================================
-// LÓGICA DE ASIGNACIÓN ALEATORIA (EL "CHISTE" DEL SORTEO EXTERNO)
-// Ultra-Optimizada para seleccionar números instantáneamente
-// ============================================================================
 export async function buyRandomTicketsManual(formData: FormData) {
   try {
     const raffleId = formData.get("raffleId") as string;
@@ -266,10 +262,9 @@ export async function buyRandomTicketsManual(formData: FormData) {
             Math.random() * availableNumbers.length,
           );
           selectedNumbers.push(availableNumbers[randomIndex]);
-          availableNumbers.splice(randomIndex, 1); // Lo quitamos para no repetirlo
+          availableNumbers.splice(randomIndex, 1);
         }
 
-        // 6. Creamos la Transacción Pendiente
         const transaction = await tx.transaction.create({
           data: {
             userId,
@@ -283,7 +278,6 @@ export async function buyRandomTicketsManual(formData: FormData) {
           },
         });
 
-        // 7. Creamos los tickets asignados con estatus PENDING ligados a la transacción
         await tx.ticket.createMany({
           data: selectedNumbers.map((num) => ({
             number: num,
