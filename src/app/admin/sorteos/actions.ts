@@ -24,7 +24,6 @@ export async function createRaffle(formData: FormData) {
     const minSoldRaw = Number(formData.get("minSoldThreshold"));
     const drawDateString = formData.get("drawDate") as string;
 
-    // Capturamos los bancos habilitados si el sorteo es externo
     const availableBanks =
       type === "EXTERNAL" ? (formData.get("availableBanks") as string) : null;
 
@@ -55,14 +54,11 @@ export async function createRaffle(formData: FormData) {
     if (imageFile && imageFile.size > 0) {
       const bytes = await imageFile.arrayBuffer();
       const buffer = Buffer.from(bytes);
-      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-      const ext = imageFile.name.split(".").pop() || "png";
-      const filename = `sorteo-${uniqueSuffix}.${ext}`;
-      const uploadDir = path.join(process.cwd(), "public", "uploads");
 
-      await mkdir(uploadDir, { recursive: true });
-      await writeFile(path.join(uploadDir, filename), buffer);
-      finalImageUrl = `/uploads/${filename}`;
+      // FIX VERCEL: Usar Base64 para la imagen del sorteo también (OPCIONAL, pero recomendado en Serverless)
+      const base64Image = buffer.toString("base64");
+      const mimeType = imageFile.type || "image/png";
+      finalImageUrl = `data:${mimeType};base64,${base64Image}`;
     } else if (imageUrl?.trim()) {
       finalImageUrl = imageUrl.trim();
     }
@@ -356,16 +352,12 @@ export async function buyRandomTicketsManual(formData: FormData) {
       };
     }
 
+    // FIX VERCEL SERVERLESS: Encriptar archivo a Data URI Base64 directamente a la DB
     const bytes = await receiptFile.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    const ext = receiptFile.name.split(".").pop() || "png";
-    const filename = `receipt-${uniqueSuffix}.${ext}`;
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "receipts");
-
-    await mkdir(uploadDir, { recursive: true });
-    await writeFile(path.join(uploadDir, filename), buffer);
-    const receiptUrl = `/uploads/receipts/${filename}`;
+    const base64Image = buffer.toString("base64");
+    const mimeType = receiptFile.type || "image/png";
+    const receiptUrl = `data:${mimeType};base64,${base64Image}`;
 
     const fullName = `${buyerName.trim()} ${buyerLastName.trim()}`;
 
@@ -696,12 +688,11 @@ export async function updateRaffle(id: string, formData: FormData) {
 
     if (imageFile && imageFile.size > 0) {
       const bytes = await imageFile.arrayBuffer();
-      const filename = `sorteo-${Date.now()}.png`;
-      const uploadDir = path.join(process.cwd(), "public", "uploads");
+      const buffer = Buffer.from(bytes);
 
-      await mkdir(uploadDir, { recursive: true });
-      await writeFile(path.join(uploadDir, filename), Buffer.from(bytes));
-      finalImageUrl = `/uploads/${filename}`;
+      const base64Image = buffer.toString("base64");
+      const mimeType = imageFile.type || "image/png";
+      finalImageUrl = `data:${mimeType};base64,${base64Image}`;
     } else if (imageUrl?.trim()) {
       finalImageUrl = imageUrl.trim();
     }

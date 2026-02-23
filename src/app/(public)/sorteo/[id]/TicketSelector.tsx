@@ -77,16 +77,18 @@ export default function TicketSelector({
   const [receiptName, setReceiptName] = useState<string>("");
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
+  const isExternal = type === "EXTERNAL";
+  const availableCount = maxTickets - soldNumbers.length;
+  const isSoldOut = availableCount <= 0;
+
   const availableNumbers = useMemo(() => {
+    if (isExternal) return [];
     return Array.from({ length: maxTickets }, (_, i) => i + 1).filter(
       (num) => !soldNumbers.includes(num),
     );
-  }, [maxTickets, soldNumbers]);
+  }, [maxTickets, soldNumbers, isExternal]);
 
-  const isSoldOut = availableNumbers.length === 0;
-
-  const currentSelectionCount =
-    type === "EXTERNAL" ? quantity : selectedNumbers.length;
+  const currentSelectionCount = isExternal ? quantity : selectedNumbers.length;
   const totalCost = isSoldOut ? 0 : currentSelectionCount * pricePerTicket;
   const hasBalance = userBalance >= totalCost;
 
@@ -113,8 +115,8 @@ export default function TicketSelector({
     setError(null);
     if (newQuantity < 1) {
       setQuantity(1);
-    } else if (newQuantity > availableNumbers.length) {
-      setQuantity(availableNumbers.length);
+    } else if (newQuantity > availableCount) {
+      setQuantity(availableCount);
     } else {
       setQuantity(newQuantity);
     }
@@ -128,7 +130,7 @@ export default function TicketSelector({
 
     startTransition(async () => {
       let res;
-      if (type === "EXTERNAL") {
+      if (isExternal) {
         res = await buyRandomTickets(raffleId, userId, quantity);
       } else {
         res = await buyTickets(raffleId, userId, selectedNumbers);
@@ -238,7 +240,7 @@ export default function TicketSelector({
       <div className="flex flex-col md:flex-row items-center justify-between gap-6">
         <div className="flex items-center gap-4 w-full md:w-auto overflow-hidden">
           <div className="bg-primary-dynamic/20 p-3 rounded-2xl border border-primary-dynamic/30 shrink-0">
-            {type === "EXTERNAL" ? (
+            {isExternal ? (
               <Shuffle className="text-primary-dynamic" size={28} />
             ) : (
               <Ticket className="text-primary-dynamic" size={28} />
@@ -246,7 +248,7 @@ export default function TicketSelector({
           </div>
           <div className="min-w-0">
             <h3 className="text-2xl font-black text-white uppercase italic tracking-tighter leading-none truncate">
-              {type === "EXTERNAL" ? (
+              {isExternal ? (
                 <span className="text-primary-dynamic">{raffleTitle}</span>
               ) : (
                 <>
@@ -256,7 +258,7 @@ export default function TicketSelector({
               )}
             </h3>
             <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1 line-clamp-2">
-              {type === "EXTERNAL"
+              {isExternal
                 ? raffleDescription
                 : "Escoge tu combinación ganadora"}
             </p>
@@ -295,7 +297,7 @@ export default function TicketSelector({
         </div>
       ) : (
         <>
-          {type === "EXTERNAL" && (
+          {isExternal && (
             <div className="flex bg-black/40 p-1.5 rounded-2xl border border-white/5 shadow-inner">
               <button
                 onClick={() => {
@@ -326,7 +328,7 @@ export default function TicketSelector({
             </div>
           )}
 
-          {type === "INTERNAL" ? (
+          {!isExternal ? (
             <>
               <div className="flex justify-end">
                 <button
@@ -390,7 +392,7 @@ export default function TicketSelector({
                   Boletos Disponibles
                 </p>
                 <p className="text-3xl font-black text-white italic tracking-tighter">
-                  {availableNumbers.length}{" "}
+                  {availableCount}{" "}
                   <span className="text-primary-dynamic text-xl">
                     / {maxTickets}
                   </span>
@@ -417,14 +419,14 @@ export default function TicketSelector({
                     disabled={isPending}
                     className="w-full bg-transparent text-center text-5xl font-black text-white italic tracking-tighter outline-none appearance-none"
                     min="1"
-                    max={availableNumbers.length}
+                    max={availableCount}
                   />
                 </div>
 
                 <button
                   type="button"
                   onClick={() => handleQuantityChange(quantity + 1)}
-                  disabled={quantity >= availableNumbers.length || isPending}
+                  disabled={quantity >= availableCount || isPending}
                   className="w-14 h-14 rounded-2xl bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <Plus size={24} />
@@ -457,7 +459,7 @@ export default function TicketSelector({
             </p>
           </div>
 
-          {paymentMethod === "WALLET" || type === "INTERNAL" ? (
+          {paymentMethod === "WALLET" || !isExternal ? (
             <div className="space-y-4">
               <button
                 onClick={handleBuy}
@@ -475,7 +477,7 @@ export default function TicketSelector({
                     <>FONDOS INSUFICIENTES</>
                   ) : (
                     <>
-                      {type === "EXTERNAL" ? (
+                      {isExternal ? (
                         <Shuffle size={20} />
                       ) : (
                         <MousePointer2 size={20} />
