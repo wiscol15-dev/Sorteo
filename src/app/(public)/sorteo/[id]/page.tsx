@@ -1,5 +1,5 @@
 import prisma from "@/lib/prisma";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import Image from "next/image";
 import { Trophy, Crown, ShieldCheck } from "lucide-react";
@@ -23,37 +23,31 @@ export default async function SorteoDetallePage({ params }: Props) {
 
   if (!raffle) return notFound();
 
-  let bankAccounts = {};
-  try {
-    bankAccounts = JSON.parse(config?.bankAccounts || "{}");
-  } catch (e) {
-    bankAccounts = {};
-  }
-
   const isFinished = raffle.status === "FINISHED";
   const isExternal = raffle.type === "EXTERNAL";
+
+  // ============================================================================
+  // ESCUDO DE ENRUTAMIENTO SENIOR:
+  // Si el sorteo es Externo y está Activo, expulsamos al usuario al Home
+  // para que realice la compra exclusivamente a través del Modal.
+  // ============================================================================
+  if (!isFinished && isExternal) {
+    redirect("/");
+  }
 
   let soldNumbers: number[] = [];
   let totalSold = 0;
 
-  if (isExternal) {
-    totalSold = await prisma.ticket.count({
-      where: {
-        raffleId: id,
-        status: { in: ["VALID", "PENDING"] },
-      },
-    });
-  } else {
-    const soldTicketsData = await prisma.ticket.findMany({
-      where: {
-        raffleId: id,
-        status: { in: ["VALID", "PENDING"] },
-      },
-      select: { number: true },
-    });
-    soldNumbers = soldTicketsData.map((t) => t.number);
-    totalSold = soldNumbers.length;
-  }
+  // Ya no necesitamos lógica externa aquí porque los expulsamos arriba
+  const soldTicketsData = await prisma.ticket.findMany({
+    where: {
+      raffleId: id,
+      status: { in: ["VALID", "PENDING"] },
+    },
+    select: { number: true },
+  });
+  soldNumbers = soldTicketsData.map((t) => t.number);
+  totalSold = soldNumbers.length;
 
   let winnerTicket = null;
   if (isFinished && raffle.winningNumber) {
@@ -172,24 +166,21 @@ export default async function SorteoDetallePage({ params }: Props) {
                     <span className="text-primary-dynamic">Participación</span>
                   </h1>
                   <p className="text-slate-400 text-[10px] lg:text-xs font-medium uppercase tracking-wider opacity-60">
-                    {isExternal
-                      ? "Sorteo Especial. Completa tu pago externo."
-                      : "Selecciona tus números de la suerte en la grilla."}
+                    Selecciona tus números de la suerte en la grilla.
                   </p>
                 </div>
 
+                {/* Pasamos solo las props que el componente interno necesita */}
                 <TicketSelector
                   raffleId={raffle.id}
                   raffleTitle={raffle.title}
                   raffleDescription={raffle.description}
-                  type={raffle.type}
                   maxTickets={raffle.maxTickets}
                   pricePerTicket={Number(raffle.pricePerTicket)}
                   soldNumbers={soldNumbers}
                   totalSold={totalSold}
                   userId={currentUserId}
                   userBalance={currentUserBalance}
-                  bankAccounts={bankAccounts}
                 />
               </div>
             )}

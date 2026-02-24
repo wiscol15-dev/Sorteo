@@ -16,34 +16,22 @@ import {
 } from "lucide-react";
 import { buyTickets } from "@/app/admin/sorteos/actions";
 
-// Mantenemos la interfaz intacta para no romper las props que envía page.tsx
-interface BankAccount {
-  titular?: string;
-  doc?: string;
-  account?: string;
-  phone?: string;
-  type?: string;
-}
-
 interface Props {
   raffleId: string;
   raffleTitle: string;
   raffleDescription: string;
-  type?: "INTERNAL" | "EXTERNAL"; // Se mantiene por compatibilidad de TS
   maxTickets: number;
   pricePerTicket: number;
   soldNumbers: number[];
   totalSold: number;
   userId: string | null;
   userBalance: number;
-  bankAccounts?: Record<string, BankAccount>; // Ya no se usa aquí, pero evita errores de TS
 }
 
 const ITEMS_PER_PAGE = 100;
 
 // ============================================================================
-// OPTIMIZACIÓN SENIOR: Componente de Botón Memoizado.
-// Esto ELIMINA EL LAG al seleccionar números. Solo re-renderiza el botón tocado.
+// BOTÓN MEMOIZADO: Previene el lag renderizando solo el número tocado
 // ============================================================================
 const TicketButton = memo(
   ({ num, isSold, isSelected, isPending, onToggle }: any) => {
@@ -70,7 +58,7 @@ const TicketButton = memo(
 TicketButton.displayName = "TicketButton";
 
 // ============================================================================
-// COMPONENTE PRINCIPAL (Solo Sorteos Internos)
+// SELECTOR EXCLUSIVO PARA SORTEOS INTERNOS
 // ============================================================================
 export default function TicketSelector({
   raffleId,
@@ -94,7 +82,7 @@ export default function TicketSelector({
   const isSoldOut = availableCount <= 0;
   const totalPages = Math.ceil(maxTickets / ITEMS_PER_PAGE);
 
-  // OPTIMIZACIÓN DE MEMORIA O(1): Tablas Hash para búsquedas instantáneas
+  // Optimización O(1) con Set
   const soldSet = useMemo(() => new Set(soldNumbers), [soldNumbers]);
   const selectedSet = useMemo(
     () => new Set(selectedNumbers),
@@ -113,7 +101,6 @@ export default function TicketSelector({
   const totalCost = selectedNumbers.length * pricePerTicket;
   const hasBalance = userBalance >= totalCost;
 
-  // useCallback previene la re-creación de funciones y protege el React.memo
   const toggle = useCallback((num: number) => {
     setError(null);
     setSelectedNumbers((prev) =>
@@ -154,7 +141,6 @@ export default function TicketSelector({
     });
   };
 
-  // ================= PANTALLA DE ÉXITO =================
   if (success) {
     return (
       <div className="bg-slate-900 p-8 lg:p-12 rounded-[2rem] lg:rounded-[3.5rem] border border-slate-800 shadow-xl text-center space-y-6 lg:space-y-8 animate-in zoom-in duration-300">
@@ -179,10 +165,8 @@ export default function TicketSelector({
     );
   }
 
-  // ================= UI PRINCIPAL (GRILLA) =================
   return (
     <div className="bg-slate-900 p-6 lg:p-12 rounded-[2rem] lg:rounded-[3.5rem] border border-slate-800 shadow-xl space-y-8 lg:space-y-10">
-      {/* CABECERA */}
       <div className="flex flex-col lg:flex-row items-center justify-between gap-4 lg:gap-6">
         <div className="flex items-center gap-4 w-full overflow-hidden">
           <div className="bg-primary-dynamic/20 p-3 rounded-2xl border border-primary-dynamic/30 shrink-0">
@@ -217,7 +201,6 @@ export default function TicketSelector({
         </div>
       ) : (
         <div className="space-y-6 lg:space-y-8">
-          {/* ACCIONES RÁPIDAS DE LA GRILLA */}
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
             <p className="text-[9px] lg:text-[10px] font-black text-slate-400 uppercase tracking-widest">
               {selectedNumbers.length > 0 ? (
@@ -237,7 +220,6 @@ export default function TicketSelector({
             </button>
           </div>
 
-          {/* GRILLA DE BOTONES MEMOIZADA */}
           <div className="bg-slate-950 p-4 lg:p-6 rounded-[2rem] border border-slate-800">
             <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-2 lg:gap-3">
               {currentViewNumbers.map((num) => (
@@ -252,7 +234,6 @@ export default function TicketSelector({
               ))}
             </div>
 
-            {/* PAGINACIÓN */}
             {totalPages > 1 && (
               <div className="flex items-center justify-between mt-6 bg-slate-900 p-2 rounded-xl border border-slate-800">
                 <button
@@ -282,7 +263,6 @@ export default function TicketSelector({
             )}
           </div>
 
-          {/* RESUMEN DE COMPRA */}
           <div className="text-center">
             <p className="text-[9px] lg:text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">
               Total a Debitar
@@ -304,7 +284,6 @@ export default function TicketSelector({
             </div>
           )}
 
-          {/* BOTÓN DE PAGO FINAL */}
           <button
             onClick={handleInternalBuy}
             disabled={
