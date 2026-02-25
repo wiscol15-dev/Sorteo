@@ -13,6 +13,7 @@ import {
   LayoutTemplate,
   Monitor,
   CreditCard,
+  Image as ImageIcon,
 } from "lucide-react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -105,6 +106,8 @@ export default async function SettingsPage() {
     headerIconName: "ShieldCheck",
     headerImageUrl: null,
     bankAccounts: "{}",
+    bgImage1: null,
+    bgImage2: null,
   };
 
   let parsedBanks: Record<string, any> = {};
@@ -218,16 +221,82 @@ export default async function SettingsPage() {
                   Entorno Global
                 </h4>
                 <ColorInput
-                  label="Color de Fondo Web"
+                  label="Color de Fondo Web (Fallback)"
                   name="bgColor"
                   defaultValue={siteConfig.colorSecundario}
                   disabled={!isSuper}
                 />
               </div>
 
+              {/* =====================================================================
+                  NUEVA SECCIÓN: FONDOS DINÁMICOS 50/50
+                  ===================================================================== */}
               <div className="bg-black/30 p-6 rounded-2xl border border-white/5 space-y-5">
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 border-b border-white/5 pb-3">
-                  <CreditCard size={14} className="text-primary-dynamic" /> 4.
+                  <ImageIcon size={14} className="text-primary-dynamic" /> 4.
+                  Fondos (Split Screen)
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Imagen Izquierda */}
+                  <div className="space-y-3">
+                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest px-1">
+                      Fondo Izquierdo (1080x1920)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="file"
+                        name="bgImage1File"
+                        id="bgImage1File"
+                        accept="image/*"
+                        disabled={!isSuper}
+                        className="hidden"
+                      />
+                      <label
+                        htmlFor="bgImage1File"
+                        className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl transition-all ${isSuper ? "cursor-pointer border-white/20 hover:border-primary-dynamic bg-white/5 hover:bg-white/10" : "opacity-30 cursor-not-allowed border-white/10 bg-white/5"}`}
+                      >
+                        <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest text-center px-4">
+                          Subir Imagen <br /> Izquierda
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Imagen Derecha */}
+                  <div className="space-y-3">
+                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest px-1">
+                      Fondo Derecho (1080x1920)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="file"
+                        name="bgImage2File"
+                        id="bgImage2File"
+                        accept="image/*"
+                        disabled={!isSuper}
+                        className="hidden"
+                      />
+                      <label
+                        htmlFor="bgImage2File"
+                        className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl transition-all ${isSuper ? "cursor-pointer border-white/20 hover:border-primary-dynamic bg-white/5 hover:bg-white/10" : "opacity-30 cursor-not-allowed border-white/10 bg-white/5"}`}
+                      >
+                        <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest text-center px-4">
+                          Subir Imagen <br /> Derecha
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[8px] text-slate-500 uppercase tracking-widest text-center">
+                  * Si no se suben imágenes, se mostrará el color de fondo
+                  global.
+                </p>
+              </div>
+
+              <div className="bg-black/30 p-6 rounded-2xl border border-white/5 space-y-5">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 border-b border-white/5 pb-3">
+                  <CreditCard size={14} className="text-primary-dynamic" /> 5.
                   Tarjetas de Sorteos
                 </h4>
                 <ColorInput
@@ -244,7 +313,6 @@ export default async function SettingsPage() {
                 />
               </div>
 
-              {/* INTEGRACIÓN DEL COMPONENTE CLIENTE */}
               <BankConfigClient initialData={parsedBanks} isSuper={isSuper} />
 
               {isSuper && (

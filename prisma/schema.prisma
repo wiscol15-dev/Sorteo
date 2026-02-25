@@ -38,7 +38,7 @@ enum UserStatus {
   SUSPENDED
   BANNED
   PENDING_VERIFICATION
-  PENDING // Añadido para el flujo de registro KYC
+  PENDING
 }
 
 enum TicketStatus {
@@ -150,6 +150,11 @@ model SiteConfig {
   headerIconName  String   @default("ShieldCheck")
   headerImageUrl  String?
   bankAccounts    String?  @db.Text
+  
+  // CAMPOS PARA FONDOS DINAMICOS SPLIT (50/50)
+  bgImage1        String?  @db.Text
+  bgImage2        String?  @db.Text
+  
   updatedAt       DateTime @updatedAt
 }
 
@@ -158,8 +163,8 @@ model AuditLog {
   userId      String
   user        User     @relation(fields: [userId], references: [id])
   action      String
-  entityType  String?  // <-- Añadido para rastreo avanzado (Ej: "TRANSACTION", "USER")
-  entityId    String?  // <-- Añadido para vincular la acción a un ID específico
+  entityType  String?
+  entityId    String?
   metadata    Json?
   ipAddress   String?
   createdAt   DateTime @default(now())

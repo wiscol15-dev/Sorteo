@@ -2,8 +2,6 @@
 
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
 import { headers } from "next/headers";
 import bcrypt from "bcryptjs";
 
@@ -31,28 +29,41 @@ export async function updateSystemConfig(formData: FormData, userId: string) {
     const headerIconName =
       (formData.get("headerIconName") as string) || "ShieldCheck";
 
+    // 1. PROCESAMIENTO DE IMAGEN DEL HEADER A BASE64 (Compatible con Vercel)
     let finalHeaderImageUrl: string | undefined = undefined;
-
     if (headerIconType === "IMAGE") {
       const imageFile = formData.get("headerImageFile") as File | null;
       if (imageFile && imageFile.size > 0) {
         const bytes = await imageFile.arrayBuffer();
         const buffer = Buffer.from(bytes);
-        const filename = `header-custom-${Date.now()}.png`;
-        const uploadDir = path.join(
-          process.cwd(),
-          "public",
-          "uploads",
-          "config",
-        );
-
-        await mkdir(uploadDir, { recursive: true });
-        await writeFile(path.join(uploadDir, filename), buffer);
-        finalHeaderImageUrl = `/uploads/config/${filename}`;
+        const base64Image = buffer.toString("base64");
+        const mimeType = imageFile.type || "image/png";
+        finalHeaderImageUrl = `data:${mimeType};base64,${base64Image}`;
       }
     }
 
-    // CAPTURA DINÁMICA DE CUENTAS BANCARIAS
+    // 2. PROCESAMIENTO DE FONDOS DINÁMICOS 50/50 A BASE64
+    let finalBgImage1: string | undefined = undefined;
+    const bgImage1File = formData.get("bgImage1File") as File | null;
+    if (bgImage1File && bgImage1File.size > 0) {
+      const bytes = await bgImage1File.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+      const base64Image = buffer.toString("base64");
+      const mimeType = bgImage1File.type || "image/png";
+      finalBgImage1 = `data:${mimeType};base64,${base64Image}`;
+    }
+
+    let finalBgImage2: string | undefined = undefined;
+    const bgImage2File = formData.get("bgImage2File") as File | null;
+    if (bgImage2File && bgImage2File.size > 0) {
+      const bytes = await bgImage2File.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+      const base64Image = buffer.toString("base64");
+      const mimeType = bgImage2File.type || "image/png";
+      finalBgImage2 = `data:${mimeType};base64,${base64Image}`;
+    }
+
+    // 3. CAPTURA DINÁMICA DE CUENTAS BANCARIAS
     const bankAccountsObj: Record<string, any> = {};
     const totalBanks =
       parseInt(formData.get("total_banks_count") as string) || 50;
@@ -76,6 +87,7 @@ export async function updateSystemConfig(formData: FormData, userId: string) {
 
     const bankAccounts = JSON.stringify(bankAccountsObj);
 
+    // 4. CONSTRUCCIÓN DEL OBJETO DE ACTUALIZACIÓN
     const currentConfig = await prisma.siteConfig.findFirst();
 
     const configData: any = {
@@ -88,9 +100,14 @@ export async function updateSystemConfig(formData: FormData, userId: string) {
       headerIconType,
       headerIconName,
       bankAccounts,
-      ...(finalHeaderImageUrl && { headerImageUrl: finalHeaderImageUrl }),
     };
 
+    // Solo se adjuntan si el usuario subió imágenes nuevas (evita sobreescribir con nulos)
+    if (finalHeaderImageUrl) configData.headerImageUrl = finalHeaderImageUrl;
+    if (finalBgImage1) configData.bgImage1 = finalBgImage1;
+    if (finalBgImage2) configData.bgImage2 = finalBgImage2;
+
+    // 5. TRANSACCIÓN SEGURA A LA BASE DE DATOS
     await prisma.$transaction(async (tx) => {
       if (currentConfig) {
         await tx.siteConfig.update({
@@ -112,18 +129,22 @@ export async function updateSystemConfig(formData: FormData, userId: string) {
             siteName,
             headerIconType,
             headerIconName,
+            backgroundsUpdated: !!finalBgImage1 || !!finalBgImage2,
             banksUpdated: Object.keys(bankAccountsObj).length,
           },
         },
       });
     });
 
+    // 6. PURGA GLOBAL DE CACHÉ PARA REFLEJAR CAMBIOS AL INSTANTE
     revalidatePath("/", "layout");
-    revalidatePath("/admin/configuracion");
-    revalidatePath("/sorteo/[id]", "page");
     return { success: true };
   } catch (error: any) {
-    return { success: false, error: error.message };
+    console.error("Config Update Error:", error.message);
+    return {
+      success: false,
+      error: "Fallo en la actualización de configuración.",
+    };
   }
 }
 
@@ -180,19 +201,18 @@ export async function registerNewOfficer(
     let docUrl = "";
     if (isSuper) {
       const file = formData.get("docFile") as File;
-      if (!file || file.size === 0)
+      if (!file || file.size === 0) {
         throw new Error(
           "IDENTIFICATION_REQUIRED: Documento obligatorio para SuperAdmin.",
         );
+      }
 
+      // PROCESAMIENTO DE DOCUMENTO A BASE64 (Compatible con Vercel)
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
-      const filename = `clearance-${Date.now()}-${file.name.replace(/\s+/g, "_")}`;
-      const uploadDir = path.join(process.cwd(), "public", "security");
-
-      await mkdir(uploadDir, { recursive: true });
-      await writeFile(path.join(uploadDir, filename), buffer);
-      docUrl = `/security/${filename}`;
+      const base64Image = buffer.toString("base64");
+      const mimeType = file.type || "image/png";
+      docUrl = `data:${mimeType};base64,${base64Image}`;
     }
 
     await prisma.$transaction([
