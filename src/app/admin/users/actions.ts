@@ -34,18 +34,32 @@ export async function toggleUserVerification(targetUserId: string) {
 
     const isNowVerified = !targetUser.isVerified;
 
-    await prisma.user.update({
-      where: { id: targetUserId },
-      data: {
-        isVerified: isNowVerified,
-        verifiedById: isNowVerified ? officer.id : null,
-        verifiedAt: isNowVerified ? new Date() : null,
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: targetUserId },
+        data: {
+          isVerified: isNowVerified,
+          verifiedById: isNowVerified ? officer.id : null,
+          verifiedAt: isNowVerified ? new Date() : null,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          action: isNowVerified ? "USER_VERIFIED" : "USER_UNVERIFIED",
+          entityType: "USER",
+          entityId: targetUserId,
+          userId: officer.id,
+          metadata: { reason: "Manual toggle by admin" },
+        },
+      });
     });
 
     revalidatePath("/admin/users");
+    revalidatePath("/admin");
     return { success: true };
-  } catch (error) {
+  } catch (error: any) {
+    console.error("Error in toggleUserVerification:", error.message);
     return { success: false, error: "Fallo en el protocolo de verificación." };
   }
 }
@@ -72,14 +86,27 @@ export async function updateUserStatus(
       return { success: false, error: "ACCESS_DENIED." };
     }
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: { status },
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { status },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          action: `USER_STATUS_${status}`,
+          entityType: "USER",
+          entityId: userId,
+          userId: officer.id,
+        },
+      });
     });
 
     revalidatePath("/admin/users");
+    revalidatePath("/admin");
     return { success: true };
-  } catch (error) {
+  } catch (error: any) {
+    console.error("Error in updateUserStatus:", error.message);
     return { success: false, error: "No se pudo cambiar el estado operativo." };
   }
 }
@@ -114,11 +141,21 @@ export async function deleteUserRecord(targetUserId: string) {
       });
 
       await tx.user.delete({ where: { id: targetUserId } });
+
+      await tx.auditLog.create({
+        data: {
+          action: "USER_DELETED",
+          entityType: "USER",
+          entityId: targetUserId,
+          userId: officer.id,
+        },
+      });
     });
 
-    revalidatePath("/admin/users");
+    revalidatePath("/", "layout");
     return { success: true };
-  } catch (error) {
+  } catch (error: any) {
+    console.error("Error in deleteUserRecord:", error.message);
     return {
       success: false,
       error: "Fallo en cascada al eliminar usuario y dependencias.",
@@ -148,9 +185,12 @@ export async function approveManualPurchase(transactionId: string) {
     await prisma.$transaction(async (tx) => {
       const transaction = await tx.transaction.findUnique({
         where: { id: transactionId },
+        include: { user: true },
       });
 
       if (!transaction) throw new Error("Transacción no encontrada.");
+      if (transaction.status === "COMPLETED")
+        throw new Error("Esta transacción ya fue aprobada.");
 
       await tx.transaction.update({
         where: { id: transactionId },
@@ -161,15 +201,28 @@ export async function approveManualPurchase(transactionId: string) {
         where: { transactionId: transactionId },
         data: { status: "VALID" },
       });
+
+      await tx.auditLog.create({
+        data: {
+          action: "EXTERNAL_PURCHASE_APPROVED",
+          entityType: "TRANSACTION",
+          entityId: transactionId,
+          userId: officer.id,
+          metadata: {
+            amount: Number(transaction.amount),
+            targetUser: transaction.user.email,
+          },
+        },
+      });
     });
 
-    revalidatePath("/admin/users");
-    revalidatePath("/admin/sorteos");
+    revalidatePath("/", "layout");
     return { success: true };
-  } catch (error) {
+  } catch (error: any) {
+    console.error("Error in approveManualPurchase:", error.message);
     return {
       success: false,
-      error: "Fallo al aprobar la adquisición de tickets.",
+      error: error.message || "Fallo al aprobar la adquisición de tickets.",
     };
   }
 }
@@ -194,6 +247,12 @@ export async function rejectManualPurchase(transactionId: string) {
     }
 
     await prisma.$transaction(async (tx) => {
+      const transaction = await tx.transaction.findUnique({
+        where: { id: transactionId },
+      });
+
+      if (!transaction) throw new Error("Transacción no encontrada.");
+
       await tx.transaction.update({
         where: { id: transactionId },
         data: { status: "REJECTED" },
@@ -203,11 +262,21 @@ export async function rejectManualPurchase(transactionId: string) {
         where: { transactionId: transactionId },
         data: { status: "REJECTED" },
       });
+
+      await tx.auditLog.create({
+        data: {
+          action: "EXTERNAL_PURCHASE_REJECTED",
+          entityType: "TRANSACTION",
+          entityId: transactionId,
+          userId: officer.id,
+        },
+      });
     });
 
-    revalidatePath("/admin/users");
+    revalidatePath("/", "layout");
     return { success: true };
-  } catch (error) {
+  } catch (error: any) {
+    console.error("Error in rejectManualPurchase:", error.message);
     return { success: false, error: "Error al anular la orden de compra." };
   }
 }

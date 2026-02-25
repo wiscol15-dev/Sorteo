@@ -38,6 +38,7 @@ enum UserStatus {
   SUSPENDED
   BANNED
   PENDING_VERIFICATION
+  PENDING // Añadido para el flujo de registro KYC
 }
 
 enum TicketStatus {
@@ -153,13 +154,15 @@ model SiteConfig {
 }
 
 model AuditLog {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  action    String
-  metadata  Json?
-  ipAddress String?
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  action      String
+  entityType  String?  // <-- Añadido para rastreo avanzado (Ej: "TRANSACTION", "USER")
+  entityId    String?  // <-- Añadido para vincular la acción a un ID específico
+  metadata    Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
 
   @@index([userId])
   @@index([createdAt])
